@@ -2,6 +2,7 @@
 // Yahoo Finance (no key) → SPX, VIX, DXY, 10Y Yield, 5Y Breakeven
 // CoinGecko (no key)     → BTC, ETH
 // Alternative.me (no key)→ Crypto Fear & Greed
+// FRED (FRED_API_KEY)    → HY Spreads, 2Y Yield, 10Y Yield, Real 10Y Yield
 
 const YF_SYMBOLS = {
   spx:        "^GSPC",
@@ -34,6 +35,21 @@ async function fetchCoinGecko() {
   const r = await fetch(url, { headers: { Accept: "application/json" } });
   if (!r.ok) throw new Error(`CoinGecko ${r.status}`);
   return r.json();
+}
+
+// FRED — returns most recent non-missing observation value
+// Requires FRED_API_KEY env var; returns null if key is absent (graceful fallback)
+async function fetchFRED(seriesId) {
+  const apiKey = process.env.FRED_API_KEY;
+  if (!apiKey) return null;
+  const url = `https://api.stlouisfed.org/fred/series/observations?series_id=${seriesId}&api_key=${apiKey}&limit=10&sort_order=desc&file_type=json`;
+  const r = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!r.ok) throw new Error(`FRED ${seriesId} ${r.status}`);
+  const j = await r.json();
+  // "." means missing (weekend/holiday); find most recent real value
+  const obs = j.observations?.find(o => o.value !== ".");
+  if (!obs) throw new Error(`FRED ${seriesId}: no valid observation`);
+  return { value: parseFloat(obs.value), date: obs.date };
 }
 
 async function fetchFearGreed() {
@@ -72,6 +88,30 @@ export default async function handler(req, res) {
         if (d) out.fear_greed = { value: +d.value, label: d.value_classification };
       })
       .catch(() => {}),
+
+    // FRED — HY Credit Spreads (BAMLH0A0HYM2)
+    fetchFRED("BAMLH0A0HYM2")
+      .then(d => { if (d) out.hy_spread = d; })
+      .catch(() => {}),
+
+    // FRED — Real 10Y Yield / TIPS (DFII10)
+    fetchFRED("DFII10")
+      .then(d => { if (d) out.real_yield = d; })
+      .catch(() => {}),
+
+    // FRED — 2Y-10Y Yield Curve (DGS2 + DGS10)
+    Promise.all([
+      fetchFRED("DGS2").catch(() => null),
+      fetchFRED("DGS10").catch(() => null),
+    ]).then(([y2, y10]) => {
+      if (y2 && y10) {
+        out.yield_curve = {
+          spread: parseFloat((y10.value - y2.value).toFixed(2)),
+          y2:     y2.value,
+          y10:    y10.value,
+        };
+      }
+    }),
   ]);
 
   // 10-minute cache hint for Vercel edge

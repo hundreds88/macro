@@ -40,10 +40,11 @@ const CATEGORIES = [
   {
     id: "markets", name: "MARKETS & PRICES", weight: "Feeds: Sentiment dimension",
     indicators: [
-      { id: "spx",   name: "S&P 500",   query: "S&P 500 price today" },
-      { id: "vix",   name: "VIX",       query: "VIX index today" },
-      { id: "dxy",   name: "DXY",       query: "US Dollar Index today" },
-      { id: "us10y", name: "10Y Yield", query: "10-year treasury yield today" },
+      { id: "spx",       name: "S&P 500",      query: "S&P 500 price today" },
+      { id: "vix",       name: "VIX",          query: "VIX index today" },
+      { id: "dxy",       name: "DXY",          query: "US Dollar Index today" },
+      { id: "us10y",     name: "10Y Yield",    query: "10-year treasury yield today" },
+      { id: "hy_spread", name: "HY Spreads",   query: "ICE BofA US high yield OAS credit spread 2026" },
     ],
   },
   {
@@ -68,9 +69,10 @@ const CATEGORIES = [
   {
     id: "fed", name: "FED POLICY", weight: "Core dimension: Monetary",
     indicators: [
-      { id: "ffr",       name: "Fed Funds Rate",   query: "federal funds rate 2026" },
-      { id: "cut_prob",  name: "Cut Probability",  query: "CME FedWatch cut probability 2026" },
-      { id: "cuts_2026", name: "2026 Cuts Priced", query: "Fed rate cuts priced 2026 futures" },
+      { id: "ffr",         name: "Fed Funds Rate",   query: "federal funds rate 2026" },
+      { id: "cut_prob",    name: "Cut Probability",  query: "CME FedWatch cut probability 2026" },
+      { id: "cuts_2026",   name: "2026 Cuts Priced", query: "Fed rate cuts priced 2026 futures" },
+      { id: "yield_curve", name: "2Y-10Y Curve",     query: "2-year 10-year treasury yield curve spread 2026" },
     ],
   },
   {
@@ -79,6 +81,7 @@ const CATEGORIES = [
       { id: "core_pce",     name: "Core PCE YoY ⚡", query: "core PCE year over year 2026" },
       { id: "core_pce_mom", name: "Core PCE MoM",    query: "core PCE month over month 2026" },
       { id: "breakeven5",   name: "5Y Breakeven",    query: "5-year breakeven inflation 2026" },
+      { id: "real_yield",   name: "Real 10Y Yield",  query: "10-year TIPS real yield 2026" },
     ],
   },
   {
@@ -616,17 +619,27 @@ function RulesRef() {
 // ─── LIVE PRICE FORMATTER ────────────────────────────────────────────────────
 function fmtLive(id, d) {
   if (!d) return null;
+  // ── FRED series (no prev close available) ─────────────────────────────────
+  if (id === "hy_spread")   return `${d.value.toFixed(2)}% OAS`;
+  if (id === "real_yield")  return `${d.value.toFixed(2)}%`;
+  if (id === "yield_curve") {
+    const sign   = d.spread >= 0 ? "+" : "";
+    const status = d.spread < 0 ? "inverted" : "normal";
+    return `${sign}${d.spread.toFixed(2)}% ${status} (2Y ${d.y2.toFixed(2)}%, 10Y ${d.y10.toFixed(2)}%)`;
+  }
+  // ── Crypto ─────────────────────────────────────────────────────────────────
   if (id === "btc" || id === "eth") {
     const sign = (d.change24h ?? 0) >= 0 ? "+" : "";
     return `$${Math.round(d.price).toLocaleString("en-US")} (${sign}${(d.change24h ?? 0).toFixed(1)}% 24h)`;
   }
   if (id === "fear_greed") return `${d.value} - ${d.label}`;
+  // ── Yahoo Finance yield series (stored as pct points, not price) ───────────
   if (id === "us10y" || id === "breakeven5") {
     const bp   = Math.round((d.price - d.prev) * 100);
     const sign = bp >= 0 ? "+" : "";
     return `${d.price.toFixed(2)}% (${sign}${bp}bp today)`;
   }
-  // spx, vix, dxy
+  // ── Yahoo Finance price series (spx, vix, dxy) ────────────────────────────
   const chg  = ((d.price - d.prev) / d.prev) * 100;
   const sign = chg >= 0 ? "+" : "";
   const pStr = id === "spx"
