@@ -2,11 +2,12 @@ export const config = {
   api: { bodyParser: { sizeLimit: "4mb" } },
 };
 
-// Try models in order on 429 — all support google_search grounding on free tier
+// Try models in order on 429 (quota) or 404 (deprecated name)
+// All support google_search grounding on the free tier
 const MODELS = [
-  "gemini-2.0-flash",       // best reasoning; 1,500 req/day free
-  "gemini-1.5-flash",       // proven stable; 1,500 req/day free
-  "gemini-1.5-flash-8b",    // most lenient; 4,000 req/day free
+  "gemini-2.0-flash",          // primary — best reasoning, 1,500 req/day free
+  "gemini-2.0-flash-lite",     // lighter 2.0 variant, higher quota
+  "gemini-1.5-flash-8b",       // 4,000 req/day free — most lenient
 ];
 
 export default async function handler(req, res) {
@@ -16,19 +17,18 @@ export default async function handler(req, res) {
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return res
-      .status(500)
-      .json({ error: "GEMINI_API_KEY not set — add it in Vercel → Settings → Environment Variables" });
+    return res.status(500).json({
+      error:
+        "GEMINI_API_KEY not set. Add it in Vercel → Settings → Environment Variables. Get a free key at aistudio.google.com/apikey",
+    });
   }
 
   const { prompt, system } = req.body;
-
-  let lastError = null;
+  const errors = [];
 
   for (const model of MODELS) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-    let data;
     try {
       const upstream = await fetch(url, {
         method: "POST",
@@ -41,11 +41,11 @@ export default async function handler(req, res) {
         }),
       });
 
-      data = await upstream.json();
+      const data = await upstream.json();
 
-      if (upstream.status === 429) {
-        // quota hit — try next model
-        lastError = data.error?.message || `${model}: rate limited`;
+      // 429 = quota hit, 404 = model renamed/deprecated → try next
+      if (upstream.status === 429 || upstream.status === 404) {
+        errors.push(`${model} (${upstream.status}): ${data.error?.message ?? upstream.statusText}`);
         continue;
       }
 
@@ -55,7 +55,6 @@ export default async function handler(req, res) {
           .json({ error: data.error?.message || JSON.stringify(data) });
       }
 
-      // Extract text from Gemini response (skip grounding metadata parts)
       const text = (data.candidates?.[0]?.content?.parts ?? [])
         .filter((p) => p.text)
         .map((p) => p.text)
@@ -63,13 +62,16 @@ export default async function handler(req, res) {
 
       return res.status(200).json({ text, model });
     } catch (err) {
-      lastError = err.message;
-      continue;
+      errors.push(`${model}: ${err.message}`);
     }
   }
 
-  // All models exhausted
+  // All models failed — surface a clear actionable message
   return res.status(429).json({
-    error: `All Gemini models rate-limited. Fix: create a fresh API key at aistudio.google.com/apikey (not Google Cloud Console). Last error: ${lastError}`,
+    error:
+      "All models failed. If you see quota errors, your API key has limit:0 — " +
+      "this means it was created in Google Cloud Console, not AI Studio. " +
+      "Fix: go to aistudio.google.com/apikey, create a fresh key, and update GEMINI_API_KEY in Vercel. " +
+      `Details: ${errors.join(" | ")}`,
   });
 }
