@@ -693,21 +693,13 @@ export default function Dashboard() {
       const res = await fetch("/api/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 4096,
-          system: API_SYSTEM,
-          messages: [{ role: "user", content: prompt }],
-          tools: [{ type: "web_search_20250305", name: "web_search" }],
-        }),
+        body: JSON.stringify({ prompt, system: API_SYSTEM }),
       });
       if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
       setProgress("Computing regime signals…");
       const result = await res.json();
-      const text = (result.content || [])
-        .filter((b) => b.type === "text")
-        .map((b) => b.text)
-        .join("\n");
+      if (result.error) throw new Error(result.error);
+      const text = result.text || "";
       let json = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
       const f = json.indexOf("{"), l = json.lastIndexOf("}");
       if (f !== -1 && l !== -1) json = json.slice(f, l + 1);
