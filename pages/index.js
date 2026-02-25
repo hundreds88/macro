@@ -92,7 +92,7 @@ const CATEGORIES = [
 ];
 
 const API_SYSTEM =
-  "You are a quant macro analyst. Return ONLY valid JSON. No markdown, no backticks, no text outside the JSON.";
+  "You are a quant macro analyst. Return ONLY valid JSON. No markdown, no backticks, no text outside the JSON. Never use apostrophes, quotes, or newlines inside string values — use plain text only.";
 
 const API_PROMPT = `You are a macro-quant analyst scoring a 6-dimension regime model. For each indicator below, search the web for the latest value. If a web search does not return a specific number, use your training knowledge to provide the most recent known value — never return "unknown". Always give a real value or a clearly-labelled estimate (e.g. "~4.3%").
 
@@ -613,6 +613,20 @@ function RulesRef() {
   );
 }
 
+// ─── JSON REPAIR ─────────────────────────────────────────────────────────────
+function repairJson(str) {
+  // Remove trailing commas before } or ]
+  str = str.replace(/,(\s*[}\]])/g, "$1");
+  // Close any unclosed braces/brackets (handles truncated output)
+  const stack = [];
+  for (const ch of str) {
+    if (ch === "{") stack.push("}");
+    else if (ch === "[") stack.push("]");
+    else if (ch === "}" || ch === "]") stack.pop();
+  }
+  return str + stack.reverse().join("");
+}
+
 // ─── MAIN DASHBOARD ───────────────────────────────────────────────────────────
 export default function Dashboard() {
   const [data, setData]               = useState(null);
@@ -651,7 +665,13 @@ export default function Dashboard() {
       let json = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
       const f = json.indexOf("{"), l = json.lastIndexOf("}");
       if (f !== -1 && l !== -1) json = json.slice(f, l + 1);
-      setData(JSON.parse(json));
+      let parsed;
+      try {
+        parsed = JSON.parse(json);
+      } catch {
+        parsed = JSON.parse(repairJson(json));
+      }
+      setData(parsed);
       setLastFetched(new Date());
     } catch (err) {
       setError(err.message);
