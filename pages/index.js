@@ -40,79 +40,60 @@ const CATEGORIES = [
   {
     id: "markets", name: "MARKETS & PRICES", weight: "Feeds: Sentiment dimension",
     indicators: [
-      { id: "spx",    name: "S&P 500",        query: "S&P 500 index price today" },
-      { id: "ndx",    name: "Nasdaq 100",      query: "Nasdaq 100 index price today" },
-      { id: "vix",    name: "VIX",             query: "VIX volatility index today" },
-      { id: "dxy",    name: "DXY",             query: "US Dollar Index DXY today" },
-      { id: "gold",   name: "Gold",            query: "gold price per ounce today" },
-      { id: "us2y",   name: "2Y Yield",        query: "2 year US treasury yield today" },
-      { id: "us10y",  name: "10Y Yield",       query: "10 year US treasury yield today" },
-      { id: "spread", name: "2s10s Spread",    query: "2s10s yield curve spread today 2026" },
+      { id: "spx",   name: "S&P 500",   query: "S&P 500 price today" },
+      { id: "vix",   name: "VIX",       query: "VIX index today" },
+      { id: "dxy",   name: "DXY",       query: "US Dollar Index today" },
+      { id: "us10y", name: "10Y Yield", query: "10-year treasury yield today" },
     ],
   },
   {
     id: "crypto", name: "CRYPTO", weight: "Feeds: Crypto Sentiment overlay",
     indicators: [
-      { id: "btc",        name: "Bitcoin",         query: "Bitcoin BTC price today" },
-      { id: "eth",        name: "Ethereum",        query: "Ethereum ETH price today" },
-      { id: "btcdom",     name: "BTC Dominance",   query: "Bitcoin dominance percentage today 2026" },
-      { id: "etf_flows",  name: "BTC ETF Flows",   query: "Bitcoin spot ETF net flows this week 2026" },
-      { id: "funding",    name: "Funding Rate",    query: "Bitcoin perpetual funding rate today 2026" },
-      { id: "eth_etf",    name: "ETH Staking ETF", query: "BlackRock Ethereum staking ETF approval 2026" },
-      { id: "fear_greed", name: "Fear & Greed",    query: "crypto fear and greed index today 2026" },
+      { id: "btc",        name: "Bitcoin",       query: "Bitcoin price today" },
+      { id: "eth",        name: "Ethereum",      query: "Ethereum price today" },
+      { id: "etf_flows",  name: "BTC ETF Flows", query: "Bitcoin ETF net flows this week 2026" },
+      { id: "funding",    name: "Funding Rate",  query: "Bitcoin perpetual funding rate 2026" },
+      { id: "fear_greed", name: "Fear & Greed",  query: "crypto fear greed index 2026" },
     ],
   },
   {
     id: "liquidity", name: "GLOBAL LIQUIDITY", weight: "Core dimension: Liquidity",
     indicators: [
-      { id: "fed_bs",    name: "Fed Balance Sheet", query: "Federal Reserve balance sheet total assets latest 2026" },
-      { id: "rrp",       name: "Reverse Repo",      query: "Federal Reserve reverse repo balance latest 2026" },
-      { id: "tga",       name: "TGA",               query: "Treasury General Account TGA balance latest 2026" },
-      { id: "us_m2",     name: "US M2 YoY",         query: "US M2 money supply year over year growth latest 2026" },
-      { id: "net_liq",   name: "Net Liquidity",     query: "US net liquidity Fed balance sheet minus TGA minus RRP 2026" },
-      { id: "ecb_bs",    name: "ECB Balance Sheet", query: "ECB balance sheet total assets latest 2026" },
-      { id: "boj_bs",    name: "BOJ Balance Sheet", query: "Bank of Japan balance sheet latest 2026" },
-      { id: "pboc",      name: "PBOC Assets",       query: "PBOC total assets latest 2026" },
-      { id: "global_m2", name: "Global M2",         query: "global M2 money supply USD terms latest 2026" },
+      { id: "fed_bs",  name: "Fed Balance Sheet", query: "Fed balance sheet total assets 2026" },
+      { id: "rrp",     name: "Reverse Repo",      query: "Fed reverse repo balance 2026" },
+      { id: "tga",     name: "TGA",               query: "Treasury General Account balance 2026" },
+      { id: "us_m2",   name: "US M2 YoY",         query: "US M2 money supply growth 2026" },
     ],
   },
   {
     id: "fed", name: "FED POLICY", weight: "Core dimension: Monetary",
     indicators: [
-      { id: "ffr",       name: "Fed Funds Rate",   query: "current federal funds rate 2026" },
-      { id: "next_fomc", name: "Next FOMC",        query: "next FOMC meeting date rate decision 2026" },
-      { id: "cut_prob",  name: "Cut Probability",  query: "CME FedWatch rate cut probability next meeting 2026" },
-      { id: "cuts_2026", name: "2026 Cuts Priced", query: "total Fed rate cuts priced 2026 futures" },
-      { id: "fed_chair", name: "Fed Chair",        query: "Kevin Warsh Fed chair transition 2026" },
+      { id: "ffr",       name: "Fed Funds Rate",   query: "federal funds rate 2026" },
+      { id: "cut_prob",  name: "Cut Probability",  query: "CME FedWatch cut probability 2026" },
+      { id: "cuts_2026", name: "2026 Cuts Priced", query: "Fed rate cuts priced 2026 futures" },
     ],
   },
   {
     id: "inflation", name: "INFLATION", weight: "Core dimension: Inflation",
     indicators: [
-      { id: "cpi",          name: "CPI YoY",        query: "latest CPI headline year over year 2026" },
-      { id: "core_cpi",     name: "Core CPI YoY",   query: "latest core CPI year over year 2026" },
-      { id: "pce",          name: "PCE YoY",        query: "latest PCE price index year over year 2026" },
-      { id: "core_pce",     name: "Core PCE YoY ⚡", query: "latest core PCE year over year 2026" },
-      { id: "core_pce_mom", name: "Core PCE MoM",   query: "latest core PCE month over month 2026" },
-      { id: "breakeven5",   name: "5Y Breakeven",   query: "5 year breakeven inflation rate 2026" },
+      { id: "core_pce",     name: "Core PCE YoY ⚡", query: "core PCE year over year 2026" },
+      { id: "core_pce_mom", name: "Core PCE MoM",    query: "core PCE month over month 2026" },
+      { id: "breakeven5",   name: "5Y Breakeven",    query: "5-year breakeven inflation 2026" },
     ],
   },
   {
     id: "growth", name: "GROWTH & LABOR", weight: "Core dimension: Growth",
     indicators: [
-      { id: "gdp",          name: "GDP",             query: "latest US GDP growth rate 2026" },
-      { id: "unemployment", name: "Unemployment",    query: "US unemployment rate latest 2026" },
-      { id: "nfp",          name: "Nonfarm Payrolls",query: "latest nonfarm payrolls 2026" },
-      { id: "claims",       name: "Jobless Claims",  query: "latest initial jobless claims 2026" },
-      { id: "pmi",          name: "PMI Composite",   query: "US PMI composite latest 2026" },
+      { id: "pmi",          name: "PMI Composite",   query: "US PMI composite 2026" },
+      { id: "nfp",          name: "Nonfarm Payrolls",query: "nonfarm payrolls latest 2026" },
+      { id: "unemployment", name: "Unemployment",    query: "US unemployment rate 2026" },
     ],
   },
   {
     id: "geopolitical", name: "GEOPOLITICAL", weight: "Modifier: can shift ±1",
     indicators: [
-      { id: "tariffs",  name: "Tariff Status", query: "US tariff policy status 2026" },
-      { id: "china",    name: "US-China",      query: "US China trade tensions 2026" },
-      { id: "conflict", name: "Conflict Risk", query: "geopolitical conflict risk Iran Middle East 2026" },
+      { id: "tariffs", name: "Tariff Status", query: "US tariff policy 2026" },
+      { id: "china",   name: "US-China",      query: "US China trade relations 2026" },
     ],
   },
 ];
@@ -140,16 +121,16 @@ Score based on: BTC ETF flows, funding rates, fear&greed index, exchange reserve
 -2: Capitulation + extreme fear + massive outflows
 
 Return ONLY valid JSON (no markdown, no backticks) with these keys:
-- dimensions: {monetary,inflation,growth,liquidity,dollar,sentiment} each {score:-1|0|1, rationale:string}
-- crypto_sentiment: {score:-2..+2, rationale:string}
+- dimensions: {monetary,inflation,growth,liquidity,dollar,sentiment} each {score:-1|0|1, rationale:string(1 sentence)}
+- crypto_sentiment: {score:-2..+2, rationale:string(1 sentence)}
 - composite: integer (sum of 6 dimension scores, -6 to +6)
-- indicators: keyed by indicator_id, each {value:string, trend:string, signal:strong_bull|bull|neutral|bear|strong_bear, note:string}
-- regime: {monetary,fiscal,inflation,growth,liquidity,sentiment} each {state:string, signal:bull|bear|neutral, detail:string}
-- liquidity_narrative: string (2-3 sentences on net US liquidity and global CBs)
-- composite_narrative: string (2-3 sentences on overall verdict and #1 thing to watch)
-- trade_actions: string (2-3 sentences on specific trades to take THIS WEEK)
-- key_dates: array of {date:"MMM D", event:string, importance:critical|high|medium}
-- aave_guidance: string (1-2 sentences on managing leveraged wstETH/USDC on Aave)
+- indicators: keyed by indicator_id, each {value:string, trend:string, signal:strong_bull|bull|neutral|bear|strong_bear, note:string(brief)}
+- regime: {monetary,fiscal,inflation,growth,liquidity,sentiment} each {state:string, signal:bull|bear|neutral, detail:string(brief)}
+- liquidity_narrative: string (1-2 sentences)
+- composite_narrative: string (1-2 sentences)
+- trade_actions: string (1-2 sentences on THIS WEEK's trades)
+- key_dates: array of {date:"MMM D", event:string, importance:critical|high|medium} (top 4 only)
+- aave_guidance: string (1 sentence)
 - updated: today's date
 
 INDICATORS TO SEARCH:
@@ -656,7 +637,7 @@ export default function Dashboard() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
-    setProgress("Searching 45+ indicators…");
+    setProgress("Searching 24 indicators…");
 
     const allInds = CATEGORIES.flatMap((c) =>
       c.indicators.map((i) => `- ${i.id}: ${i.name} → "${i.query}"`)

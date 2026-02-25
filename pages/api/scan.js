@@ -2,7 +2,7 @@ export const config = {
   api: { bodyParser: { sizeLimit: "4mb" } },
 };
 
-const MODEL = "compound-beta"; // Groq compound model with built-in web search
+const MODEL = "compound-beta-mini"; // lighter compound model, higher free-tier quota
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
