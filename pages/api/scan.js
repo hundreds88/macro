@@ -2,7 +2,7 @@ export const config = {
   api: { bodyParser: { sizeLimit: "4mb" } },
 };
 
-const MODEL = "compound-beta-mini"; // lighter compound model, higher free-tier quota
+const MODEL = "llama-3.3-70b-versatile"; // fast, large context — no web-search tool calls that inflate payload
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {

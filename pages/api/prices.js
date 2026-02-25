@@ -52,6 +52,19 @@ async function fetchFRED(seriesId) {
   return { value: parseFloat(obs.value), date: obs.date };
 }
 
+// FRED — returns array of recent non-missing observations (for YoY/MoM calcs)
+async function fetchFREDObs(seriesId, limit = 15) {
+  const apiKey = process.env.FRED_API_KEY;
+  if (!apiKey) return null;
+  const url = `https://api.stlouisfed.org/fred/series/observations?series_id=${seriesId}&api_key=${apiKey}&limit=${limit}&sort_order=desc&file_type=json`;
+  const r = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!r.ok) throw new Error(`FRED ${seriesId} ${r.status}`);
+  const j = await r.json();
+  return (j.observations ?? [])
+    .filter(o => o.value !== ".")
+    .map(o => ({ value: parseFloat(o.value), date: o.date }));
+}
+
 async function fetchFearGreed() {
   const r = await fetch("https://api.alternative.me/fng/?limit=1", {
     headers: { Accept: "application/json" },
@@ -86,6 +99,35 @@ export default async function handler(req, res) {
       .then(j => {
         const d = j.data?.[0];
         if (d) out.fear_greed = { value: +d.value, label: d.value_classification };
+      })
+      .catch(() => {}),
+
+    // FRED — Fed Funds Target Rate upper bound (DFEDTARU)
+    fetchFRED("DFEDTARU")
+      .then(d => { if (d) out.ffr = d; })
+      .catch(() => {}),
+
+    // FRED — Unemployment Rate (UNRATE)
+    fetchFRED("UNRATE")
+      .then(d => { if (d) out.unemployment = d; })
+      .catch(() => {}),
+
+    // FRED — Core PCE Price Index → compute YoY and MoM (PCEPILFE, monthly)
+    fetchFREDObs("PCEPILFE", 15)
+      .then(obs => {
+        if (!obs || obs.length < 2) return;
+        const latest = obs[0];
+        const prevMonth = obs[1];
+        out.core_pce_mom = {
+          value: parseFloat(((latest.value / prevMonth.value - 1) * 100).toFixed(2)),
+          date: latest.date,
+        };
+        if (obs.length >= 13) {
+          out.core_pce = {
+            value: parseFloat(((latest.value / obs[12].value - 1) * 100).toFixed(2)),
+            date: latest.date,
+          };
+        }
       })
       .catch(() => {}),
 

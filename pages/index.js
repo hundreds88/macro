@@ -97,7 +97,7 @@ const CATEGORIES = [
 const API_SYSTEM =
   "You are a quant macro analyst. Return ONLY valid JSON. No markdown, no backticks, no text outside the JSON. Never use apostrophes, quotes, or newlines inside string values — use plain text only.";
 
-const API_PROMPT = `You are a macro-quant analyst scoring a 6-dimension regime model. For each indicator below, search the web for the latest value. If a web search does not return a specific number, use your training knowledge to provide the most recent known value — never return "unknown". Always give a real value or a clearly-labelled estimate (e.g. "~4.3%").
+const API_PROMPT = `You are a macro-quant analyst scoring a 6-dimension regime model. Indicators marked LIVE VALUE are real-time data — use those exact values. For all other indicators, use your training knowledge to provide the most recent plausible value — never return "unknown". Always give a real value or a clearly-labelled estimate (e.g. "~4.3%").
 
 THE 6 DIMENSIONS (each scored -1, 0, or +1):
 
@@ -620,8 +620,12 @@ function RulesRef() {
 function fmtLive(id, d) {
   if (!d) return null;
   // ── FRED series (no prev close available) ─────────────────────────────────
-  if (id === "hy_spread")   return `${d.value.toFixed(2)}% OAS`;
-  if (id === "real_yield")  return `${d.value.toFixed(2)}%`;
+  if (id === "hy_spread")       return `${d.value.toFixed(2)}% OAS`;
+  if (id === "real_yield")      return `${d.value.toFixed(2)}%`;
+  if (id === "ffr")             return `${d.value.toFixed(2)}%`;
+  if (id === "unemployment")    return `${d.value.toFixed(1)}%`;
+  if (id === "core_pce")        return `${d.value.toFixed(2)}% YoY`;
+  if (id === "core_pce_mom")    return `${d.value.toFixed(2)}% MoM`;
   if (id === "yield_curve") {
     const sign   = d.spread >= 0 ? "+" : "";
     const status = d.spread < 0 ? "inverted" : "normal";
