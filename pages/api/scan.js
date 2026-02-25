@@ -2,32 +2,37 @@ export const config = {
   api: { bodyParser: { sizeLimit: "4mb" } },
 };
 
-const MODEL = "gemini-2.0-flash";
+const MODEL = "compound-beta"; // Groq compound model with built-in web search
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
     return res.status(500).json({
       error:
-        "GEMINI_API_KEY not set. Add it in Vercel → Settings → Environment Variables. Get a free key at aistudio.google.com/apikey",
+        "GROQ_API_KEY not set. Add it in Vercel → Settings → Environment Variables. Get a free key at console.groq.com",
     });
   }
 
   const { prompt, system } = req.body;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`;
 
-  const upstream = await fetch(url, {
+  const upstream = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
     body: JSON.stringify({
-      system_instruction: { parts: [{ text: system }] },
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      tools: [{ google_search: {} }],
-      generation_config: { temperature: 0.1, max_output_tokens: 8192 },
+      model: MODEL,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: prompt },
+      ],
+      temperature: 0.1,
+      max_tokens: 8192,
     }),
   });
 
@@ -39,10 +44,7 @@ export default async function handler(req, res) {
       .json({ error: data.error?.message || JSON.stringify(data) });
   }
 
-  const text = (data.candidates?.[0]?.content?.parts ?? [])
-    .filter((p) => p.text)
-    .map((p) => p.text)
-    .join("\n");
+  const text = data.choices?.[0]?.message?.content ?? "";
 
   return res.status(200).json({ text, model: MODEL });
 }
