@@ -613,6 +613,28 @@ function RulesRef() {
   );
 }
 
+// ─── LIVE PRICE FORMATTER ────────────────────────────────────────────────────
+function fmtLive(id, d) {
+  if (!d) return null;
+  if (id === "btc" || id === "eth") {
+    const sign = (d.change24h ?? 0) >= 0 ? "+" : "";
+    return `$${Math.round(d.price).toLocaleString("en-US")} (${sign}${(d.change24h ?? 0).toFixed(1)}% 24h)`;
+  }
+  if (id === "fear_greed") return `${d.value} - ${d.label}`;
+  if (id === "us10y" || id === "breakeven5") {
+    const bp   = Math.round((d.price - d.prev) * 100);
+    const sign = bp >= 0 ? "+" : "";
+    return `${d.price.toFixed(2)}% (${sign}${bp}bp today)`;
+  }
+  // spx, vix, dxy
+  const chg  = ((d.price - d.prev) / d.prev) * 100;
+  const sign = chg >= 0 ? "+" : "";
+  const pStr = id === "spx"
+    ? `$${d.price.toLocaleString("en-US", { maximumFractionDigits: 0 })}`
+    : d.price.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  return `${pStr} (${sign}${chg.toFixed(2)}% today)`;
+}
+
 // ─── JSON REPAIR ─────────────────────────────────────────────────────────────
 function repairJson(str) {
   // Remove trailing commas before } or ]
@@ -643,22 +665,35 @@ export default function Dashboard() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
-    setProgress("Searching 24 indicators…");
-
-    const allInds = CATEGORIES.flatMap((c) =>
-      c.indicators.map((i) => `- ${i.id}: ${i.name} → "${i.query}"`)
-    );
-    const prompt = API_PROMPT + allInds.join("\n");
 
     try {
-      setProgress("Querying live market data…");
+      // ── Step 1: fetch real-time prices from market APIs ──────────────────
+      setProgress("Fetching live market prices…");
+      let livePrices = {};
+      try {
+        const pr = await fetch("/api/prices");
+        if (pr.ok) livePrices = await pr.json();
+      } catch {} // non-fatal — LLM will search for missing ones
+
+      // ── Step 2: build prompt, injecting live values where available ───────
+      const allInds = CATEGORIES.flatMap((c) =>
+        c.indicators.map((i) => {
+          const live = fmtLive(i.id, livePrices[i.id]);
+          if (live) return `- ${i.id}: ${i.name} → LIVE VALUE: ${live} [use this exact value, do not search]`;
+          return `- ${i.id}: ${i.name} → search: "${i.query}"`;
+        })
+      );
+      const prompt = API_PROMPT + allInds.join("\n");
+
+      // ── Step 3: run LLM for scoring & analysis ────────────────────────────
+      setProgress("Scoring macro regime…");
       const res = await fetch("/api/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt, system: API_SYSTEM }),
       });
       if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
-      setProgress("Computing regime signals…");
+      setProgress("Finalizing signals…");
       const result = await res.json();
       if (result.error) throw new Error(result.error);
       const text = result.text || "";
