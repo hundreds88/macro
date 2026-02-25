@@ -32,7 +32,7 @@ export default async function handler(req, res) {
         { role: "user", content: prompt },
       ],
       temperature: 0.1,
-      max_tokens: 8192,
+      max_tokens: 4096,
     }),
   });
 
