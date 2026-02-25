@@ -89,56 +89,44 @@ const CATEGORIES = [
       { id: "unemployment", name: "Unemployment",    query: "US unemployment rate 2026" },
     ],
   },
-  {
-    id: "geopolitical", name: "GEOPOLITICAL", weight: "Modifier: can shift ±1",
-    indicators: [
-      { id: "tariffs", name: "Tariff Status", query: "US tariff policy 2026" },
-      { id: "china",   name: "US-China",      query: "US China trade relations 2026" },
-    ],
-  },
 ];
 
 const API_SYSTEM =
   "You are a quant macro analyst. Return ONLY valid JSON. No markdown, no backticks, no text outside the JSON.";
 
-const API_PROMPT = `You are a macro-quant analyst scoring a 6-dimension regime model. Search the web for latest data on every indicator below, then produce scores.
+const API_PROMPT = `You are a macro-quant analyst scoring a 6-dimension regime model. For each indicator below, search the web for the latest value. If a web search does not return a specific number, use your training knowledge to provide the most recent known value — never return "unknown". Always give a real value or a clearly-labelled estimate (e.g. "~4.3%").
 
 THE 6 DIMENSIONS (each scored -1, 0, or +1):
 
 1. MONETARY: Fed policy stance. Cutting/dovish=+1, Pause/mixed=0, Hiking/hawkish=-1
 2. INFLATION: Trend direction. Cooling toward 2%=+1, Sticky/mixed=0, Reaccelerating=-1
 3. GROWTH: Economic momentum. PMI expanding/jobs strong=+1, Mixed=0, Contracting/recession risk=-1
-4. LIQUIDITY: Net liquidity conditions. Fed BS expanding/RRP draining/M2 growing/global CBs easing=+1, Mixed=0, QT/TGA building/M2 contracting=-1
+4. LIQUIDITY: Net liquidity conditions. Fed BS expanding/RRP draining/M2 growing=+1, Mixed=0, QT/TGA building/M2 contracting=-1
 5. DOLLAR: DXY direction. Weakening=+1 (bullish risk assets), Stable=0, Strengthening=-1
-6. SENTIMENT: Risk appetite. VIX<15/spreads tight/flows positive=+1, Mixed=0, VIX>25/spreads wide/capitulation=-1
+6. SENTIMENT: Risk appetite. VIX<15/spreads tight/ETF inflows=+1, Mixed=0, VIX>25/spreads wide/outflows=-1
 
-CRYPTO SENTIMENT OVERLAY (separate from macro, scored -2 to +2):
-Score based on: BTC ETF flows, funding rates, fear&greed index, exchange reserves, BTC dominance trend.
-+2: Extreme greed + massive inflows + positive funding
-+1: Positive flows + neutral-to-positive sentiment
-0: Mixed signals
--1: Outflows + fear + negative funding
--2: Capitulation + extreme fear + massive outflows
+CRYPTO SENTIMENT OVERLAY (scored -2 to +2):
++2=Extreme greed+massive ETF inflows+positive funding, +1=Positive flows+neutral sentiment, 0=Mixed, -1=Outflows+fear+negative funding, -2=Capitulation+extreme fear+massive outflows
 
-Return ONLY valid JSON (no markdown, no backticks) with these keys:
-- dimensions: {monetary,inflation,growth,liquidity,dollar,sentiment} each {score:-1|0|1, rationale:string(1 sentence)}
-- crypto_sentiment: {score:-2..+2, rationale:string(1 sentence)}
-- composite: integer (sum of 6 dimension scores, -6 to +6)
-- indicators: keyed by indicator_id, each {value:string, trend:string, signal:strong_bull|bull|neutral|bear|strong_bear, note:string(brief)}
-- regime: {monetary,fiscal,inflation,growth,liquidity,sentiment} each {state:string, signal:bull|bear|neutral, detail:string(brief)}
+Return ONLY valid JSON (no markdown, no backticks):
+- dimensions: {monetary,inflation,growth,liquidity,dollar,sentiment} each {score:-1|0|1, rationale:string}
+- crypto_sentiment: {score:-2..+2, rationale:string}
+- composite: integer (-6 to +6)
+- indicators: object keyed by indicator_id (use exact IDs from list below), each {value:string, trend:string, signal:strong_bull|bull|neutral|bear|strong_bear, note:string}
+- regime: {monetary,fiscal,inflation,growth,liquidity,sentiment} each {state:string, signal:bull|bear|neutral, detail:string}
 - liquidity_narrative: string (1-2 sentences)
 - composite_narrative: string (1-2 sentences)
-- trade_actions: string (1-2 sentences on THIS WEEK's trades)
-- key_dates: array of {date:"MMM D", event:string, importance:critical|high|medium} (top 4 only)
-- aave_guidance: string (1 sentence)
+- trade_actions: string (1-2 sentences on THIS WEEK)
+- key_dates: array of {date:"MMM D", event:string, importance:critical|high|medium} (top 4)
+- aave_guidance: string (1 sentence on wstETH/USDC Aave position)
 - updated: today's date
 
-INDICATORS TO SEARCH:
+INDICATORS (use these exact IDs as JSON keys):
 `;
 
 // ─── STYLES ───────────────────────────────────────────────────────────────────
 const STYLES = `
-  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700;800&family=Instrument+Sans:wght@700;800&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;500;600;700;800&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   html { -webkit-text-size-adjust: 100%; }
   body { background: #070d1a; }
@@ -155,26 +143,26 @@ const STYLES = `
     background: linear-gradient(135deg, #091f15 0%, #071610 100%);
     border: 1px solid #1a4530;
     color: #00d4a8;
-    padding: 13px 44px;
+    padding: 14px 44px;
     border-radius: 6px;
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 700;
-    letter-spacing: 2px;
+    letter-spacing: 1.5px;
     cursor: pointer;
-    font-family: inherit;
+    font-family: 'Inter', system-ui, sans-serif;
     transition: border-color 0.2s, box-shadow 0.2s;
-    min-height: 46px;
+    min-height: 48px;
   }
   .scan-btn:hover:not(:disabled) {
     border-color: #00d4a845;
     box-shadow: 0 0 28px #00d4a810, 0 0 8px #00d4a808;
   }
-  .scan-btn:disabled { background: #0b1525; border-color: #1d2f4a; color: #253a55; cursor: not-allowed; }
+  .scan-btn:disabled { background: #0b1525; border-color: #1d2f4a; color: #3a5272; cursor: not-allowed; }
 
   /* Responsive grids */
   .dim-grid    { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
   .pos-grid    { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
-  .regime-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .regime-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .dash-header { display: flex; justify-content: space-between; align-items: flex-start; }
   .gauge-num   { font-size: 52px; }
 
@@ -183,9 +171,9 @@ const STYLES = `
     .pos-grid    { grid-template-columns: repeat(3, 1fr); }
     .regime-grid { grid-template-columns: repeat(2, 1fr); }
     .dash-header { flex-direction: column; gap: 6px; }
-    .gauge-num   { font-size: 34px !important; }
+    .gauge-num   { font-size: 36px !important; }
     .scan-btn    { width: 100%; padding: 14px; }
-    .gauge-sub   { font-size: 10px !important; flex-direction: column; gap: 2px; align-items: center; }
+    .gauge-sub   { font-size: 12px !important; flex-direction: column; gap: 4px; align-items: center; }
   }
   @media (max-width: 400px) {
     .dim-grid { grid-template-columns: repeat(2, 1fr); }
@@ -214,11 +202,12 @@ function Card({ children, style, accent }) {
   );
 }
 
-function CardHeader({ children, color = "#3a5070" }) {
+function CardHeader({ children, color = "#6a8aaa" }) {
   return (
     <div style={{
-      fontSize: 9, letterSpacing: 2, color, fontWeight: 700,
+      fontSize: 11, letterSpacing: 1, color, fontWeight: 700,
       marginBottom: 12, borderBottom: "1px solid #1d2f4a", paddingBottom: 9,
+      fontFamily: "'Inter', system-ui, sans-serif", textTransform: "uppercase",
     }}>
       {children}
     </div>
@@ -258,16 +247,16 @@ function DimensionBar({ dimensions, cryptoSentiment }) {
           return (
             <div key={d.key} style={{
               textAlign: "center", background: "#0f1e36", borderRadius: 6,
-              padding: "10px 4px", border: `1px solid ${c}18`,
+              padding: "12px 6px", border: `1px solid ${c}25`,
             }}>
-              <div style={{ fontSize: 8, color: "#3a5070", letterSpacing: 1.5 }}>{d.label}</div>
+              <div style={{ fontSize: 10, color: "#6a8aaa", letterSpacing: 0.5, fontFamily: "'Inter', system-ui, sans-serif", fontWeight: 600 }}>{d.label}</div>
               <div style={{
-                fontSize: 22, fontWeight: 800, color: c, lineHeight: 1.1,
-                fontFamily: "'Instrument Sans', sans-serif", margin: "3px 0",
+                fontSize: 24, fontWeight: 800, color: c, lineHeight: 1.1,
+                fontFamily: "'JetBrains Mono', monospace", margin: "4px 0",
               }}>
                 {scoreLabel(dim.score)}
               </div>
-              <div style={{ fontSize: 8, color: "#4a6282", lineHeight: 1.35, minHeight: 22 }}>
+              <div style={{ fontSize: 10, color: "#6a8aaa", lineHeight: 1.4, minHeight: 24, fontFamily: "'Inter', system-ui, sans-serif" }}>
                 {dim.rationale}
               </div>
             </div>
@@ -277,24 +266,21 @@ function DimensionBar({ dimensions, cryptoSentiment }) {
 
       {cryptoSentiment && (
         <div style={{
-          marginTop: 10, padding: "10px 12px", background: "#0f1e36", borderRadius: 6,
-          border: `1px solid ${scoreColor(cryptoSentiment.score)}18`,
+          marginTop: 10, padding: "12px 14px", background: "#0f1e36", borderRadius: 6,
+          border: `1px solid ${scoreColor(cryptoSentiment.score)}25`,
           display: "flex", justifyContent: "space-between", alignItems: "center",
-          flexWrap: "wrap", gap: 6,
+          flexWrap: "wrap", gap: 8,
         }}>
           <div>
-            <span style={{ fontSize: 9, color: "#3a5070", letterSpacing: 1.5 }}>CRYPTO SENTIMENT OVERLAY</span>
-            <span style={{ fontSize: 8, color: "#1f3050", marginLeft: 8 }}>(modifies BTC/ETH allocation)</span>
+            <div style={{ fontSize: 11, color: "#6a8aaa", fontWeight: 600, fontFamily: "'Inter', system-ui, sans-serif" }}>Crypto Sentiment Overlay</div>
+            <div style={{ fontSize: 12, color: "#7a9ab8", marginTop: 2, fontFamily: "'Inter', system-ui, sans-serif" }}>{cryptoSentiment.rationale}</div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 9, color: "#4a6282" }}>{cryptoSentiment.rationale}</span>
-            <span style={{
-              fontSize: 18, fontWeight: 800, color: scoreColor(cryptoSentiment.score),
-              fontFamily: "'Instrument Sans', sans-serif",
-            }}>
-              {cryptoSentiment.score > 0 ? "+" : ""}{cryptoSentiment.score}
-            </span>
-          </div>
+          <span style={{
+            fontSize: 22, fontWeight: 800, color: scoreColor(cryptoSentiment.score),
+            fontFamily: "'JetBrains Mono', monospace",
+          }}>
+            {cryptoSentiment.score > 0 ? "+" : ""}{cryptoSentiment.score}
+          </span>
         </div>
       )}
     </Card>
@@ -309,8 +295,8 @@ function CompositeGauge({ composite, narrative, signalKey }) {
 
   return (
     <div style={{ textAlign: "center", padding: "26px 0 18px" }}>
-      <div style={{ fontSize: 9, letterSpacing: 3, color: "#2d4560", marginBottom: 8 }}>
-        COMPOSITE REGIME SIGNAL
+      <div style={{ fontSize: 11, letterSpacing: 1.5, color: "#5a7898", marginBottom: 8, fontFamily: "'Inter', system-ui, sans-serif", fontWeight: 600, textTransform: "uppercase" }}>
+        Composite Regime Signal
       </div>
       <div
         className="gauge-num"
@@ -325,23 +311,24 @@ function CompositeGauge({ composite, narrative, signalKey }) {
 
       <div
         className="gauge-sub"
-        style={{ fontSize: 11, color: "#4a6282", marginTop: 8, display: "flex", justifyContent: "center", alignItems: "center", gap: 8, flexWrap: "wrap" }}
+        style={{ fontSize: 13, color: "#6a8aaa", marginTop: 8, display: "flex", justifyContent: "center", alignItems: "center", gap: 10, flexWrap: "wrap", fontFamily: "'Inter', system-ui, sans-serif" }}
       >
         <span>
-          Composite:{" "}
-          <span style={{ color: cfg.color, fontWeight: 700 }}>
+          Score:{" "}
+          <span style={{ color: cfg.color, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
             {composite > 0 ? "+" : ""}{composite}
           </span>{" "}
           / ±6
         </span>
-        <span style={{ color: "#1d2f4a" }}>|</span>
-        <span style={{ color: "#5a7898" }}>{cfg.action}</span>
+        <span style={{ color: "#2d4560" }}>·</span>
+        <span style={{ color: "#8ab0cc" }}>{cfg.action}</span>
       </div>
 
       {narrative && (
         <div style={{
-          fontSize: 11, color: "#5a7898", marginTop: 12, lineHeight: 1.85,
-          maxWidth: 620, margin: "12px auto 0",
+          fontSize: 14, color: "#8ab0cc", marginTop: 14, lineHeight: 1.7,
+          maxWidth: 620, margin: "14px auto 0",
+          fontFamily: "'Inter', system-ui, sans-serif",
         }}>
           {narrative}
         </div>
@@ -403,7 +390,7 @@ function PositionTable({ signalKey, cryptoScore }) {
               textAlign: "center", background: "#0f1e36", borderRadius: 6,
               padding: "12px 6px", border: `1px solid ${a.color}18`,
             }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: a.color, letterSpacing: 0.5 }}>{a.label}</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: a.color, fontFamily: "'JetBrains Mono', monospace" }}>{a.label}</div>
               <div style={{
                 fontSize: 28, fontWeight: 800, lineHeight: 1,
                 color: adjusted > 0 ? "#c5d5ee" : "#1f3050",
@@ -413,7 +400,7 @@ function PositionTable({ signalKey, cryptoScore }) {
                 {adjusted}%
               </div>
               {isModified && (
-                <div style={{ fontSize: 8, color: cryptoMod > 0 ? "#00a876" : "#e07848", marginBottom: 4 }}>
+                <div style={{ fontSize: 11, color: cryptoMod > 0 ? "#00a876" : "#e07848", marginBottom: 4, fontFamily: "'Inter', system-ui, sans-serif" }}>
                   base {base}% {cryptoMod > 0 ? "↑" : "↓"} overlay
                 </div>
               )}
@@ -428,7 +415,7 @@ function PositionTable({ signalKey, cryptoScore }) {
           );
         })}
       </div>
-      <div style={{ fontSize: 9, color: "#253a55", marginTop: 10, textAlign: "center" }}>
+      <div style={{ fontSize: 12, color: "#3a5272", marginTop: 10, textAlign: "center", fontFamily: "'Inter', system-ui, sans-serif" }}>
         Crypto overlay shifts BTC/ETH ±15% per sentiment point · Cash portion earns T-bill rate
       </div>
     </Card>
@@ -444,7 +431,7 @@ function AaveBox({ guidance }) {
         <span style={{ fontSize: 9, letterSpacing: 2, color: "#9c80f8", fontWeight: 700 }}>AAVE POSITION GUIDANCE</span>
         <span style={{ fontSize: 8, color: "#253a55" }}>wstETH / USDC</span>
       </div>
-      <div style={{ fontSize: 11, color: "#7a90a8", lineHeight: 1.85 }}>{guidance}</div>
+      <div style={{ fontSize: 14, color: "#8ab0cc", lineHeight: 1.7, fontFamily: "'Inter', system-ui, sans-serif" }}>{guidance}</div>
     </Card>
   );
 }
@@ -454,16 +441,17 @@ function TradeActions({ actions }) {
   if (!actions) return null;
   return (
     <div style={{
-      background: "#08180f", border: "1px solid #00a87625",
+      background: "#08180f", border: "1px solid #00a87630",
       borderRadius: 8, padding: 16, marginBottom: 10,
     }}>
       <div style={{
-        fontSize: 9, letterSpacing: 2, color: "#00a876", fontWeight: 700,
+        fontSize: 11, letterSpacing: 0.5, color: "#00a876", fontWeight: 700,
         marginBottom: 10, borderBottom: "1px solid #0f2820", paddingBottom: 9,
+        fontFamily: "'Inter', system-ui, sans-serif", textTransform: "uppercase",
       }}>
-        THIS WEEK&apos;S ACTIONS
+        This Week&apos;s Actions
       </div>
-      <div style={{ fontSize: 11, color: "#85a896", lineHeight: 1.85 }}>{actions}</div>
+      <div style={{ fontSize: 14, color: "#90b8a0", lineHeight: 1.7, fontFamily: "'Inter', system-ui, sans-serif" }}>{actions}</div>
     </div>
   );
 }
@@ -477,12 +465,12 @@ function Regimes({ regime }) {
         const c = regCol[r.signal] || "#f0a020";
         return (
           <div key={k} style={{
-            background: "#0b1525", padding: "10px 12px", borderRadius: 7,
+            background: "#0b1525", padding: "12px 14px", borderRadius: 7,
             borderLeft: `3px solid ${c}`,
           }}>
-            <div style={{ fontSize: 8, color: "#2d4560", letterSpacing: 1.5, textTransform: "uppercase" }}>{k}</div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: c, marginTop: 3, lineHeight: 1 }}>{r.state}</div>
-            <div style={{ fontSize: 9, color: "#3a5272", marginTop: 4, lineHeight: 1.45 }}>{r.detail}</div>
+            <div style={{ fontSize: 10, color: "#6a8aaa", letterSpacing: 0.5, textTransform: "uppercase", fontFamily: "'Inter', system-ui, sans-serif", fontWeight: 600 }}>{k}</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: c, marginTop: 4, lineHeight: 1.1, fontFamily: "'Inter', system-ui, sans-serif" }}>{r.state}</div>
+            <div style={{ fontSize: 12, color: "#7a9ab8", marginTop: 5, lineHeight: 1.5, fontFamily: "'Inter', system-ui, sans-serif" }}>{r.detail}</div>
           </div>
         );
       })}
@@ -495,8 +483,8 @@ function LiqBox({ text }) {
   if (!text) return null;
   return (
     <Card>
-      <CardHeader>GLOBAL LIQUIDITY DECOMPOSITION</CardHeader>
-      <div style={{ fontSize: 11, color: "#5a7898", lineHeight: 1.85 }}>{text}</div>
+      <CardHeader>Global Liquidity</CardHeader>
+      <div style={{ fontSize: 14, color: "#8ab0cc", lineHeight: 1.7, fontFamily: "'Inter', system-ui, sans-serif" }}>{text}</div>
     </Card>
   );
 }
@@ -514,14 +502,15 @@ function KeyDates({ dates }) {
           borderBottom: i < dates.length - 1 ? "1px solid #0f1e30" : "none",
         }}>
           <span style={{
-            fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 3,
-            background: `${ic[d.importance] || "#3a5272"}15`,
-            color: ic[d.importance] || "#3a5272",
-            letterSpacing: 0.5, minWidth: 52, textAlign: "center",
+            fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 3,
+            background: `${ic[d.importance] || "#3a5272"}20`,
+            color: ic[d.importance] || "#5a7898",
+            minWidth: 58, textAlign: "center",
+            fontFamily: "'JetBrains Mono', monospace",
           }}>
             {d.date}
           </span>
-          <span style={{ fontSize: 10, color: "#7a90a8" }}>{d.event}</span>
+          <span style={{ fontSize: 13, color: "#8ab0cc", fontFamily: "'Inter', system-ui, sans-serif" }}>{d.event}</span>
         </div>
       ))}
     </Card>
@@ -553,18 +542,19 @@ function Section({ category, indicators }) {
     }}>
       <div style={{
         display: "flex", justifyContent: "space-between", alignItems: "center",
-        borderBottom: "1px solid #1d2f4a", paddingBottom: 9, marginBottom: 9,
+        borderBottom: "1px solid #1d2f4a", paddingBottom: 10, marginBottom: 10,
         flexWrap: "wrap", gap: 6,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 9, letterSpacing: 2, color: "#4a6282", fontWeight: 700 }}>{category.name}</span>
-          {category.weight && <span style={{ fontSize: 8, color: "#1f3050" }}>{category.weight}</span>}
+          <span style={{ fontSize: 12, letterSpacing: 0.5, color: "#8ab0cc", fontWeight: 700, fontFamily: "'Inter', system-ui, sans-serif" }}>{category.name}</span>
+          {category.weight && <span style={{ fontSize: 11, color: "#4a6282", fontFamily: "'Inter', system-ui, sans-serif" }}>{category.weight}</span>}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-          <span style={{ fontSize: 10, color: "#2d4560" }}>{sc > 0 ? "+" : ""}{sc}</span>
+          <span style={{ fontSize: 13, color: "#5a7898", fontFamily: "'JetBrains Mono', monospace" }}>{sc > 0 ? "+" : ""}{sc}</span>
           <span style={{
-            fontSize: 8, fontWeight: 700, padding: "2px 7px", borderRadius: 3,
-            background: `${sclr}12`, color: sclr, letterSpacing: 1,
+            fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 3,
+            background: `${sclr}18`, color: sclr, letterSpacing: 0.5,
+            fontFamily: "'Inter', system-ui, sans-serif",
           }}>
             {sl}
           </span>
@@ -574,17 +564,19 @@ function Section({ category, indicators }) {
       {items.map((item) => (
         <div key={item.id} style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "5px 0", borderBottom: "1px solid #0c1828",
+          padding: "8px 0", borderBottom: "1px solid #0c1828",
         }}>
           <div style={{ flex: 1, minWidth: 0, paddingRight: 10 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 11, color: "#a0b8d0" }}>{item.name}</span>
-              <span style={{ fontSize: 10, color: "#4a6282", fontWeight: 600 }}>{item.data.value}</span>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 13, color: "#c0d4e8", fontFamily: "'Inter', system-ui, sans-serif", fontWeight: 500 }}>{item.name}</span>
+              <span style={{ fontSize: 13, color: "#7ab8e8", fontFamily: "'JetBrains Mono', monospace", fontWeight: 700 }}>{item.data.value}</span>
             </div>
-            <div style={{ fontSize: 8, color: "#253a52", marginTop: 2, lineHeight: 1.4 }}>{item.data.note}</div>
+            {item.data.note && (
+              <div style={{ fontSize: 11, color: "#5a7898", marginTop: 3, lineHeight: 1.45, fontFamily: "'Inter', system-ui, sans-serif" }}>{item.data.note}</div>
+            )}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-            <span style={{ fontSize: 9, color: SC[item.data.signal] || "#f0a020" }}>{item.data.trend}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            <span style={{ fontSize: 12, color: SC[item.data.signal] || "#f0a020", fontFamily: "'Inter', system-ui, sans-serif" }}>{item.data.trend}</span>
             <Dot signal={item.data.signal} />
           </div>
         </div>
@@ -598,7 +590,7 @@ function RulesRef() {
   return (
     <Card>
       <CardHeader>TRADING RULES (BACKTESTED)</CardHeader>
-      <div style={{ fontSize: 9, lineHeight: 2.3 }}>
+      <div style={{ fontSize: 13, lineHeight: 2.1, fontFamily: "'Inter', system-ui, sans-serif" }}>
         {[
           { color: "#00d4a8", label: "STRONG BULL (≥+4):", rule: "Max exposure all risk assets. Leverage acceptable. Gold 50%. Aave: maintain or increase debt." },
           { color: "#00a876", label: "BULL (+2 to +3):",   rule: "Full long all assets. Maintain leverage. Gold 75%. Aave: hold current position." },
@@ -608,11 +600,11 @@ function RulesRef() {
         ].map((r) => (
           <div key={r.label} style={{ marginBottom: 4 }}>
             <span style={{ color: r.color }}>■</span>{" "}
-            <strong style={{ color: "#5a7898" }}>{r.label}</strong>{" "}
-            <span style={{ color: "#3a5272" }}>{r.rule}</span>
+            <strong style={{ color: "#8ab0cc" }}>{r.label}</strong>{" "}
+            <span style={{ color: "#5a7898" }}>{r.rule}</span>
           </div>
         ))}
-        <div style={{ color: "#253a52", marginTop: 6 }}>
+        <div style={{ color: "#4a6282", marginTop: 8 }}>
           Crypto Overlay: BTC/ETH allocation shifts ±15% per crypto sentiment point.
           Review weekly. Rebalance on signal change, not on calendar.
         </div>
@@ -682,27 +674,27 @@ export default function Dashboard() {
 
       <div style={{
         minHeight: "100vh", background: "#070d1a", color: "#a0b8d0",
-        fontFamily: "'JetBrains Mono', 'SF Mono', monospace",
+        fontFamily: "'Inter', system-ui, sans-serif",
         padding: "16px 14px", maxWidth: 900, margin: "0 auto",
       }}>
         {/* Header */}
-        <div className="dash-header" style={{ marginBottom: 6 }}>
+        <div className="dash-header" style={{ marginBottom: 8 }}>
           <div>
-            <div style={{ fontSize: 8, letterSpacing: 4, color: "#1d2f4a" }}>MACRO REGIME</div>
+            <div style={{ fontSize: 10, letterSpacing: 2, color: "#3a5272", fontWeight: 600, textTransform: "uppercase" }}>Macro Regime</div>
             <div style={{
-              fontSize: 22, fontWeight: 800, letterSpacing: -0.5,
-              fontFamily: "'Instrument Sans', sans-serif", color: "#eaf0ff",
+              fontSize: 24, fontWeight: 800, letterSpacing: -0.5,
+              fontFamily: "'Inter', system-ui, sans-serif", color: "#eaf0ff",
             }}>
-              TRADING DASHBOARD
+              Trading Dashboard
             </div>
-            <div style={{ fontSize: 9, color: "#1f3050", marginTop: 3 }}>
+            <div style={{ fontSize: 12, color: "#4a6282", marginTop: 3 }}>
               6-dimension scoring · backtested Jan 2018 – Dec 2025 · weekly cadence
             </div>
           </div>
           {lastFetched && (
             <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 8, color: "#1d2f4a", letterSpacing: 1 }}>LAST SCAN</div>
-              <div style={{ fontSize: 10, color: "#2d4560" }}>{lastFetched.toLocaleString()}</div>
+              <div style={{ fontSize: 10, color: "#3a5272", letterSpacing: 0.5, fontWeight: 600 }}>Last scan</div>
+              <div style={{ fontSize: 12, color: "#5a7898" }}>{lastFetched.toLocaleString()}</div>
             </div>
           )}
         </div>
@@ -715,7 +707,7 @@ export default function Dashboard() {
                 display: "inline-block", width: 6, height: 6, borderRadius: "50%",
                 background: v.color, boxShadow: `0 0 5px ${v.color}55`,
               }} />
-              <span style={{ fontSize: 8, color: "#253a55" }}>{v.label} ({v.range})</span>
+              <span style={{ fontSize: 11, color: "#5a7898", fontFamily: "'Inter', system-ui, sans-serif" }}>{v.label} ({v.range})</span>
             </div>
           ))}
         </div>
@@ -726,16 +718,16 @@ export default function Dashboard() {
             {loading ? "SCANNING…" : data ? "REFRESH SCAN" : "RUN WEEKLY SCAN"}
           </button>
           {loading && progress && (
-            <div style={{ fontSize: 9, color: "#253a55", marginTop: 8, animation: "pulse 1.5s infinite" }}>
+            <div style={{ fontSize: 12, color: "#4a6282", marginTop: 8, animation: "pulse 1.5s infinite" }}>
               {progress}
             </div>
           )}
           {error && (
-            <div style={{ fontSize: 10, color: "#e03058", marginTop: 8 }}>Error: {error}</div>
+            <div style={{ fontSize: 12, color: "#e03058", marginTop: 8 }}>Error: {error}</div>
           )}
           {!data && !loading && (
-            <div style={{ fontSize: 9, color: "#1d2f4a", marginTop: 8 }}>
-              Searches 45+ indicators · scores 6 dimensions + crypto overlay · outputs position sizing
+            <div style={{ fontSize: 12, color: "#3a5272", marginTop: 8 }}>
+              Searches 22 indicators · scores 6 dimensions + crypto overlay · outputs position sizing
             </div>
           )}
         </div>
@@ -755,7 +747,7 @@ export default function Dashboard() {
               <Section key={c.id} category={c} indicators={data.indicators} />
             ))}
             <RulesRef />
-            <div style={{ textAlign: "center", padding: "14px 0 8px", fontSize: 7, color: "#0f1e30", letterSpacing: 2 }}>
+            <div style={{ textAlign: "center", padding: "14px 0 8px", fontSize: 11, color: "#253a52", letterSpacing: 1 }}>
               BACKTESTED FRAMEWORK — HYPOTHETICAL — NOT FINANCIAL ADVICE
             </div>
           </div>
