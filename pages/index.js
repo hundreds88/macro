@@ -139,43 +139,18 @@ Score based on: BTC ETF flows, funding rates, fear&greed index, exchange reserve
 -1: Outflows + fear + negative funding
 -2: Capitulation + extreme fear + massive outflows
 
-Return this JSON:
-{
-  "dimensions": {
-    "monetary":  { "score": <-1|0|1>, "rationale": "<1 line>" },
-    "inflation": { "score": <-1|0|1>, "rationale": "<1 line>" },
-    "growth":    { "score": <-1|0|1>, "rationale": "<1 line>" },
-    "liquidity": { "score": <-1|0|1>, "rationale": "<1 line>" },
-    "dollar":    { "score": <-1|0|1>, "rationale": "<1 line>" },
-    "sentiment": { "score": <-1|0|1>, "rationale": "<1 line>" }
-  },
-  "crypto_sentiment": { "score": <-2 to +2>, "rationale": "<1 line>" },
-  "composite": <sum of 6 dimensions, range -6 to +6>,
-  "indicators": {
-    "<indicator_id>": {
-      "value": "<number with units>",
-      "trend": "<1 word>",
-      "signal": "<strong_bull|bull|neutral|bear|strong_bear>",
-      "note": "<1 sentence>"
-    }
-  },
-  "regime": {
-    "monetary":  { "state": "<SHORT LABEL>", "signal": "<bull|bear|neutral>", "detail": "<1 line>" },
-    "fiscal":    { "state": "...", "signal": "...", "detail": "..." },
-    "inflation": { "state": "...", "signal": "...", "detail": "..." },
-    "growth":    { "state": "...", "signal": "...", "detail": "..." },
-    "liquidity": { "state": "...", "signal": "...", "detail": "..." },
-    "sentiment": { "state": "...", "signal": "...", "detail": "..." }
-  },
-  "liquidity_narrative": "<2-3 sentences>",
-  "composite_narrative": "<2-3 sentences>",
-  "trade_actions": "<2-3 sentences>",
-  "key_dates": [
-    { "date": "<MMM D>", "event": "<desc>", "importance": "<critical|high|medium>" }
-  ],
-  "aave_guidance": "<1-2 sentences>",
-  "updated": "<today's date>"
-}
+Return ONLY valid JSON (no markdown, no backticks) with these keys:
+- dimensions: {monetary,inflation,growth,liquidity,dollar,sentiment} each {score:-1|0|1, rationale:string}
+- crypto_sentiment: {score:-2..+2, rationale:string}
+- composite: integer (sum of 6 dimension scores, -6 to +6)
+- indicators: keyed by indicator_id, each {value:string, trend:string, signal:strong_bull|bull|neutral|bear|strong_bear, note:string}
+- regime: {monetary,fiscal,inflation,growth,liquidity,sentiment} each {state:string, signal:bull|bear|neutral, detail:string}
+- liquidity_narrative: string (2-3 sentences on net US liquidity and global CBs)
+- composite_narrative: string (2-3 sentences on overall verdict and #1 thing to watch)
+- trade_actions: string (2-3 sentences on specific trades to take THIS WEEK)
+- key_dates: array of {date:"MMM D", event:string, importance:critical|high|medium}
+- aave_guidance: string (1-2 sentences on managing leveraged wstETH/USDC on Aave)
+- updated: today's date
 
 INDICATORS TO SEARCH:
 `;
