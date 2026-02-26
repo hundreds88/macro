@@ -1,5 +1,5 @@
 import Head from "next/head";
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 const ALLOC_MATRIX = {
@@ -10,21 +10,21 @@ const ALLOC_MATRIX = {
   STRONG_BEAR: { btc: 0,   eth: 0,   spy: 0,   qqq: 0,   gld: 100 },
 };
 
-// Refined palette — deep navy base, calibrated signal tones
+// Futuristic high-contrast neon palette
 const SIGNAL_CONFIG = {
-  STRONG_BULL: { color: "#00d4a8", label: "STRONG BULL", range: "≥ +4",    action: "Max exposure. Full leverage acceptable." },
-  BULL:        { color: "#00a876", label: "BULL",        range: "+2 to +3", action: "Full long. Maintain current leverage." },
-  NEUTRAL:     { color: "#f0a020", label: "NEUTRAL",     range: "-1 to +1", action: "Reduce to half. No new leverage." },
-  BEAR:        { color: "#e07848", label: "BEAR",        range: "-2 to -3", action: "Exit equities. BTC to 25%. Reduce Aave debt." },
-  STRONG_BEAR: { color: "#e03058", label: "STRONG BEAR", range: "≤ -4",    action: "Full cash + gold. Deleverage Aave immediately." },
+  STRONG_BULL: { color: "#00ffd0", label: "STRONG BULL", range: "≥ +4",    action: "Max exposure. Full leverage acceptable." },
+  BULL:        { color: "#00e890", label: "BULL",        range: "+2 to +3", action: "Full long. Maintain current leverage." },
+  NEUTRAL:     { color: "#ffcc00", label: "NEUTRAL",     range: "-1 to +1", action: "Reduce to half. No new leverage." },
+  BEAR:        { color: "#ff7040", label: "BEAR",        range: "-2 to -3", action: "Exit equities. BTC to 25%. Reduce Aave debt." },
+  STRONG_BEAR: { color: "#ff2255", label: "STRONG BEAR", range: "≤ -4",    action: "Full cash + gold. Deleverage Aave immediately." },
 };
 
 const SC = {
-  strong_bull: "#00d4a8",
-  bull:        "#00a876",
-  neutral:     "#f0a020",
-  bear:        "#e07848",
-  strong_bear: "#e03058",
+  strong_bull: "#00ffd0",
+  bull:        "#00e890",
+  neutral:     "#ffcc00",
+  bear:        "#ff7040",
+  strong_bear: "#ff2255",
 };
 
 function getSignalKey(c) {
@@ -33,6 +33,48 @@ function getSignalKey(c) {
   if (c >= -1) return "NEUTRAL";
   if (c >= -3) return "BEAR";
   return "STRONG_BEAR";
+}
+
+// ─── WEIGHTED SCORING ─────────────────────────────────────────────────────────
+// Monetary dominates; Dollar is least predictive for this portfolio
+const DIM_WEIGHTS   = { monetary: 2.0, inflation: 1.5, growth: 1.5, liquidity: 1.0, sentiment: 0.75, dollar: 0.5 };
+const MAX_WEIGHTED  = Object.values(DIM_WEIGHTS).reduce((a, b) => a + b, 0); // 7.25
+
+function computeWeightedComposite(dimensions) {
+  if (!dimensions) return null;
+  let sum = 0;
+  for (const [dim, w] of Object.entries(DIM_WEIGHTS)) sum += (dimensions[dim]?.score ?? 0) * w;
+  return Math.round((sum / MAX_WEIGHTED) * 6); // normalize to -6..+6
+}
+
+// ─── SCAN HISTORY ─────────────────────────────────────────────────────────────
+const HISTORY_KEY = "macro_regime_history";
+const MAX_HISTORY = 12; // ~3 months of weekly scans
+
+// ─── CONFIRMATION PROTOCOL ───────────────────────────────────────────────────
+// prevHistory = history.slice(1) — excludes the just-added current scan
+function getConfirmation(prevHistory, currentKey) {
+  if (!prevHistory?.length) return null;
+  const prevKey = getSignalKey(prevHistory[0].weighted ?? prevHistory[0].raw ?? 0);
+  if (prevKey !== currentKey) return { confirmed: false, streak: 1, isNew: true, prevKey };
+  let streak = 2;
+  for (let i = 1; i < prevHistory.length; i++) {
+    if (getSignalKey(prevHistory[i].weighted ?? prevHistory[i].raw ?? 0) === currentKey) streak++;
+    else break;
+  }
+  return { confirmed: true, streak, isNew: false };
+}
+
+// ─── HARD OVERRIDES ───────────────────────────────────────────────────────────
+function getOverrides(livePrices) {
+  const out = [];
+  const vix = livePrices?.vix?.price;
+  if (vix > 30)  out.push({ type: "BEAR",         label: `VIX ${vix.toFixed(1)} > 30`,              msg: "Force BEAR sizing" });
+  const hy = livePrices?.hy_spread?.value;
+  if (hy > 5.0)  out.push({ type: "BEAR",         label: `HY Spreads ${hy.toFixed(2)}% > 500bp`,   msg: "Force BEAR sizing" });
+  const ry = livePrices?.real_yield?.value;
+  if (ry > 3.0)  out.push({ type: "CRYPTO_REDUCE", label: `Real Yield ${ry.toFixed(2)}% > 3.0%`,   msg: "−30% crypto allocation" });
+  return out;
 }
 
 // ─── API CONFIG ───────────────────────────────────────────────────────────────
@@ -132,35 +174,38 @@ const STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;500;600;700;800&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   html { -webkit-text-size-adjust: 100%; }
-  body { background: #070d1a; }
+  body { background: #040810; }
 
   ::-webkit-scrollbar { width: 3px; }
-  ::-webkit-scrollbar-thumb { background: #1d2f4a; border-radius: 2px; }
+  ::-webkit-scrollbar-thumb { background: #0e1f38; border-radius: 2px; }
 
   @keyframes pulse  { 0%,100%{opacity:1} 50%{opacity:.3} }
-  @keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes scanPulse { 0%,100%{box-shadow:0 0 20px #00ffd010} 50%{box-shadow:0 0 40px #00ffd022} }
 
-  .data-section { animation: fadeIn 0.4s ease; }
+  .data-section { animation: fadeIn 0.35s ease; }
 
   .scan-btn {
-    background: linear-gradient(135deg, #091f15 0%, #071610 100%);
-    border: 1px solid #1a4530;
-    color: #00d4a8;
-    padding: 14px 44px;
-    border-radius: 6px;
-    font-size: 13px;
+    background: #040810;
+    border: 1px solid #00ffd030;
+    color: #00ffd0;
+    padding: 14px 48px;
+    border-radius: 5px;
+    font-size: 12px;
     font-weight: 700;
-    letter-spacing: 1.5px;
+    letter-spacing: 2px;
     cursor: pointer;
-    font-family: 'Inter', system-ui, sans-serif;
-    transition: border-color 0.2s, box-shadow 0.2s;
+    font-family: 'JetBrains Mono', monospace;
+    transition: border-color 0.2s, box-shadow 0.2s, color 0.2s;
     min-height: 48px;
+    text-transform: uppercase;
   }
   .scan-btn:hover:not(:disabled) {
-    border-color: #00d4a845;
-    box-shadow: 0 0 28px #00d4a810, 0 0 8px #00d4a808;
+    border-color: #00ffd060;
+    color: #00ffd0;
+    box-shadow: 0 0 32px #00ffd018, 0 0 12px #00ffd00a, inset 0 0 24px #00ffd006;
   }
-  .scan-btn:disabled { background: #0b1525; border-color: #1d2f4a; color: #3a5272; cursor: not-allowed; }
+  .scan-btn:disabled { background: #060d1c; border-color: #0e1f38; color: #1e3050; cursor: not-allowed; }
 
   /* Responsive grids */
   .dim-grid    { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
@@ -185,17 +230,17 @@ const STYLES = `
 `;
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
-const scoreColor = (s) => s > 0 ? "#00a876" : s < 0 ? "#e07848" : "#f0a020";
+const scoreColor = (s) => s > 0 ? "#00e890" : s < 0 ? "#ff7040" : "#ffcc00";
 const scoreLabel = (s) => s > 0 ? "+1" : s < 0 ? "-1" : "0";
-const regCol = { bull: "#00a876", bear: "#e07848", neutral: "#f0a020" };
+const regCol = { bull: "#00e890", bear: "#ff7040", neutral: "#ffcc00" };
 
 // Card wrapper
 function Card({ children, style, accent }) {
   return (
     <div style={{
-      background: "#0b1525",
-      border: `1px solid ${accent ? `${accent}20` : "#1d2f4a"}`,
-      borderRadius: 8,
+      background: "#060d1c",
+      border: `1px solid ${accent ? `${accent}22` : "#0c1c32"}`,
+      borderRadius: 7,
       padding: 16,
       marginBottom: 10,
       ...style,
@@ -205,12 +250,12 @@ function Card({ children, style, accent }) {
   );
 }
 
-function CardHeader({ children, color = "#6a8aaa" }) {
+function CardHeader({ children, color = "#3d6080" }) {
   return (
     <div style={{
-      fontSize: 11, letterSpacing: 1, color, fontWeight: 700,
-      marginBottom: 12, borderBottom: "1px solid #1d2f4a", paddingBottom: 9,
-      fontFamily: "'Inter', system-ui, sans-serif", textTransform: "uppercase",
+      fontSize: 11, letterSpacing: 1.2, color, fontWeight: 700,
+      marginBottom: 12, borderBottom: "1px solid #0a1a2e", paddingBottom: 9,
+      fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase",
     }}>
       {children}
     </div>
@@ -218,7 +263,7 @@ function CardHeader({ children, color = "#6a8aaa" }) {
 }
 
 function Dot({ signal, size = 7 }) {
-  const c = SC[signal] || "#f0a020";
+  const c = SC[signal] || "#ffcc00";
   return (
     <span style={{
       display: "inline-block", width: size, height: size, borderRadius: "50%",
@@ -231,12 +276,12 @@ function Dot({ signal, size = 7 }) {
 function DimensionBar({ dimensions, cryptoSentiment }) {
   if (!dimensions) return null;
   const dims = [
-    { key: "monetary",  label: "MON" },
-    { key: "inflation", label: "INF" },
-    { key: "growth",    label: "GRO" },
-    { key: "liquidity", label: "LIQ" },
-    { key: "dollar",    label: "USD" },
-    { key: "sentiment", label: "SEN" },
+    { key: "monetary",  label: "MON", w: 2.0 },
+    { key: "inflation", label: "INF", w: 1.5 },
+    { key: "growth",    label: "GRO", w: 1.5 },
+    { key: "liquidity", label: "LIQ", w: 1.0 },
+    { key: "dollar",    label: "USD", w: 0.5 },
+    { key: "sentiment", label: "SEN", w: 0.75 },
   ];
 
   return (
@@ -249,10 +294,10 @@ function DimensionBar({ dimensions, cryptoSentiment }) {
           const c = scoreColor(dim.score);
           return (
             <div key={d.key} style={{
-              textAlign: "center", background: "#0f1e36", borderRadius: 6,
+              textAlign: "center", background: "#081628", borderRadius: 6,
               padding: "12px 6px", border: `1px solid ${c}25`,
             }}>
-              <div style={{ fontSize: 10, color: "#6a8aaa", letterSpacing: 0.5, fontFamily: "'Inter', system-ui, sans-serif", fontWeight: 600 }}>{d.label}</div>
+              <div style={{ fontSize: 10, color: "#6a8aaa", letterSpacing: 0.5, fontFamily: "'Inter', system-ui, sans-serif", fontWeight: 600 }}>{d.label} <span style={{ color: "#2d4560", fontSize: 9 }}>{d.w}×</span></div>
               <div style={{
                 fontSize: 24, fontWeight: 800, color: c, lineHeight: 1.1,
                 fontFamily: "'JetBrains Mono', monospace", margin: "4px 0",
@@ -269,7 +314,7 @@ function DimensionBar({ dimensions, cryptoSentiment }) {
 
       {cryptoSentiment && (
         <div style={{
-          marginTop: 10, padding: "12px 14px", background: "#0f1e36", borderRadius: 6,
+          marginTop: 10, padding: "12px 14px", background: "#081628", borderRadius: 6,
           border: `1px solid ${scoreColor(cryptoSentiment.score)}25`,
           display: "flex", justifyContent: "space-between", alignItems: "center",
           flexWrap: "wrap", gap: 8,
@@ -291,10 +336,11 @@ function DimensionBar({ dimensions, cryptoSentiment }) {
 }
 
 // ─── COMPOSITE GAUGE ─────────────────────────────────────────────────────────
-function CompositeGauge({ composite, narrative, signalKey }) {
+function CompositeGauge({ composite, weightedComposite, narrative, signalKey, confirmation }) {
   if (composite === null || composite === undefined) return null;
+  const displayScore = weightedComposite ?? composite;
   const cfg = SIGNAL_CONFIG[signalKey];
-  const pct = ((composite + 6) / 12) * 100;
+  const pct = ((displayScore + 6) / 12) * 100;
 
   return (
     <div style={{ textAlign: "center", padding: "26px 0 18px" }}>
@@ -303,11 +349,7 @@ function CompositeGauge({ composite, narrative, signalKey }) {
       </div>
       <div
         className="gauge-num"
-        style={{
-          fontWeight: 800, color: cfg.color, letterSpacing: -1,
-          fontFamily: "'Instrument Sans', sans-serif", lineHeight: 1,
-          textShadow: `0 0 50px ${cfg.color}28`,
-        }}
+        style={{ fontWeight: 800, color: cfg.color, letterSpacing: -1, fontFamily: "'Instrument Sans', sans-serif", lineHeight: 1, textShadow: `0 0 50px ${cfg.color}28` }}
       >
         {cfg.label}
       </div>
@@ -317,46 +359,52 @@ function CompositeGauge({ composite, narrative, signalKey }) {
         style={{ fontSize: 13, color: "#6a8aaa", marginTop: 8, display: "flex", justifyContent: "center", alignItems: "center", gap: 10, flexWrap: "wrap", fontFamily: "'Inter', system-ui, sans-serif" }}
       >
         <span>
-          Score:{" "}
+          Weighted:{" "}
           <span style={{ color: cfg.color, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
-            {composite > 0 ? "+" : ""}{composite}
-          </span>{" "}
-          / ±6
+            {displayScore > 0 ? "+" : ""}{displayScore}
+          </span>
+          {weightedComposite != null && weightedComposite !== composite && (
+            <span style={{ color: "#2d4560", fontSize: 11 }}> (raw {composite > 0 ? "+" : ""}{composite})</span>
+          )}
+          {" "}/ ±6
         </span>
         <span style={{ color: "#2d4560" }}>·</span>
         <span style={{ color: "#8ab0cc" }}>{cfg.action}</span>
       </div>
 
+      {/* Confirmation badge */}
+      {confirmation && (
+        <div style={{ marginTop: 10, display: "flex", justifyContent: "center" }}>
+          {confirmation.isNew ? (
+            <span style={{ fontSize: 11, padding: "4px 12px", borderRadius: 4, background: "#100c00", border: "1px solid #ffcc0050", color: "#ffcc00", fontFamily: "'Inter', system-ui, sans-serif" }}>
+              ⚠ New regime · 1st reading · confirm next scan before acting
+            </span>
+          ) : (
+            <span style={{ fontSize: 11, padding: "4px 12px", borderRadius: 4, background: "#060f0a", border: "1px solid #00e89040", color: "#00e890", fontFamily: "'Inter', system-ui, sans-serif" }}>
+              ✓ Confirmed · {confirmation.streak} consecutive readings
+            </span>
+          )}
+        </div>
+      )}
+
       {narrative && (
-        <div style={{
-          fontSize: 14, color: "#8ab0cc", marginTop: 14, lineHeight: 1.7,
-          maxWidth: 620, margin: "14px auto 0",
-          fontFamily: "'Inter', system-ui, sans-serif",
-        }}>
+        <div style={{ fontSize: 14, color: "#8ab0cc", marginTop: 14, lineHeight: 1.7, maxWidth: 620, margin: "14px auto 0", fontFamily: "'Inter', system-ui, sans-serif" }}>
           {narrative}
         </div>
       )}
 
       {/* Gauge track */}
       <div style={{ margin: "20px auto 0", maxWidth: 500, padding: "0 16px" }}>
-        <div style={{
-          position: "relative", height: 6, borderRadius: 3,
-          background: "linear-gradient(90deg, #e03058 0%, #e07848 22%, #f0a020 44%, #f0a020 56%, #00a876 78%, #00d4a8 100%)",
-          boxShadow: "0 1px 8px #0006",
-        }}>
+        <div style={{ position: "relative", height: 6, borderRadius: 3, background: "linear-gradient(90deg, #ff2255 0%, #ff7040 22%, #ffcc00 44%, #ffcc00 56%, #00e890 78%, #00ffd0 100%)", boxShadow: "0 1px 8px #0006" }}>
           <div style={{
             position: "absolute", top: -5, left: `${Math.max(3, Math.min(97, pct))}%`,
             transform: "translateX(-50%)", width: 16, height: 16,
-            background: cfg.color, borderRadius: "50%",
-            border: "3px solid #070d1a",
+            background: cfg.color, borderRadius: "50%", border: "3px solid #040810",
             boxShadow: `0 0 14px ${cfg.color}80, 0 0 5px ${cfg.color}`,
             transition: "left 0.6s cubic-bezier(0.4, 0, 0.2, 1)",
           }} />
         </div>
-        <div style={{
-          display: "flex", justifyContent: "space-between",
-          marginTop: 7, fontSize: 8, color: "#1f3050", letterSpacing: 1,
-        }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 7, fontSize: 8, color: "#0c1c30", letterSpacing: 1 }}>
           <span>−6 BEAR</span><span>0</span><span>BULL +6</span>
         </div>
       </div>
@@ -365,13 +413,18 @@ function CompositeGauge({ composite, narrative, signalKey }) {
 }
 
 // ─── POSITION TABLE ───────────────────────────────────────────────────────────
-function PositionTable({ signalKey, cryptoScore }) {
+function PositionTable({ signalKey, cryptoScore, overrides }) {
   if (!signalKey) return null;
-  const allocs = ALLOC_MATRIX[signalKey];
+  const bearOverride   = overrides?.some(o => o.type === "BEAR");
+  const cryptoReduce   = overrides?.some(o => o.type === "CRYPTO_REDUCE");
+  // Cap at BEAR if override fires and regime is better than BEAR
+  const effectiveKey   = bearOverride && signalKey !== "STRONG_BEAR" && signalKey !== "BEAR" ? "BEAR" : signalKey;
+  const overrideActive = effectiveKey !== signalKey;
+  const allocs         = ALLOC_MATRIX[effectiveKey];
   const assets = [
     { key: "btc", label: "BTC", color: "#f7931a" },
     { key: "eth", label: "ETH", color: "#8fa8f8" },
-    { key: "spy", label: "SPY", color: "#00a876" },
+    { key: "spy", label: "SPY", color: "#00e890" },
     { key: "qqq", label: "QQQ", color: "#9c80f8" },
     { key: "gld", label: "GLD", color: "#e8c040" },
   ];
@@ -379,7 +432,14 @@ function PositionTable({ signalKey, cryptoScore }) {
 
   return (
     <Card>
-      <CardHeader>TARGET ALLOCATION — {SIGNAL_CONFIG[signalKey].label} REGIME</CardHeader>
+      <CardHeader>
+        TARGET ALLOCATION — {SIGNAL_CONFIG[effectiveKey].label} REGIME
+        {overrideActive && (
+          <span style={{ color: "#ff2255", marginLeft: 8, fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>
+            ⚠ overridden from {SIGNAL_CONFIG[signalKey].label}
+          </span>
+        )}
+      </CardHeader>
       <div className="pos-grid">
         {assets.map((a) => {
           let base = allocs[a.key];
@@ -387,39 +447,30 @@ function PositionTable({ signalKey, cryptoScore }) {
           if ((a.key === "btc" || a.key === "eth") && cryptoMod !== 0) {
             adjusted = Math.max(0, Math.min(100, base + cryptoMod * 15));
           }
+          if ((a.key === "btc" || a.key === "eth") && cryptoReduce) {
+            adjusted = Math.round(adjusted * 0.7);
+          }
           const isModified = adjusted !== base;
           return (
-            <div key={a.key} style={{
-              textAlign: "center", background: "#0f1e36", borderRadius: 6,
-              padding: "12px 6px", border: `1px solid ${a.color}18`,
-            }}>
+            <div key={a.key} style={{ textAlign: "center", background: "#081628", borderRadius: 6, padding: "12px 6px", border: `1px solid ${a.color}18` }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: a.color, fontFamily: "'JetBrains Mono', monospace" }}>{a.label}</div>
-              <div style={{
-                fontSize: 28, fontWeight: 800, lineHeight: 1,
-                color: adjusted > 0 ? "#c5d5ee" : "#1f3050",
-                margin: "6px 0",
-                fontFamily: "'Instrument Sans', sans-serif",
-              }}>
+              <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1, color: adjusted > 0 ? "#c5d5ee" : "#0c1c30", margin: "6px 0", fontFamily: "'Instrument Sans', sans-serif" }}>
                 {adjusted}%
               </div>
               {isModified && (
-                <div style={{ fontSize: 11, color: cryptoMod > 0 ? "#00a876" : "#e07848", marginBottom: 4, fontFamily: "'Inter', system-ui, sans-serif" }}>
+                <div style={{ fontSize: 11, color: cryptoMod > 0 ? "#00e890" : "#ff7040", marginBottom: 4, fontFamily: "'Inter', system-ui, sans-serif" }}>
                   base {base}% {cryptoMod > 0 ? "↑" : "↓"} overlay
                 </div>
               )}
-              <div style={{ width: "100%", height: 3, background: "#1d2f4a", borderRadius: 2, marginTop: 6 }}>
-                <div style={{
-                  width: `${adjusted}%`, height: "100%",
-                  background: adjusted > 0 ? a.color : "#1d2f4a",
-                  borderRadius: 2, transition: "width 0.4s ease",
-                }} />
+              <div style={{ width: "100%", height: 3, background: "#0a1a2e", borderRadius: 2, marginTop: 6 }}>
+                <div style={{ width: `${adjusted}%`, height: "100%", background: adjusted > 0 ? a.color : "#0a1a2e", borderRadius: 2, transition: "width 0.4s ease" }} />
               </div>
             </div>
           );
         })}
       </div>
       <div style={{ fontSize: 12, color: "#3a5272", marginTop: 10, textAlign: "center", fontFamily: "'Inter', system-ui, sans-serif" }}>
-        Crypto overlay shifts BTC/ETH ±15% per sentiment point · Cash portion earns T-bill rate
+        Crypto overlay ±15% per sentiment point · Real yield {">"}3% −30% crypto · Cash earns T-bill rate
       </div>
     </Card>
   );
@@ -430,7 +481,7 @@ function AaveBox({ guidance }) {
   if (!guidance) return null;
   return (
     <Card accent="#9c80f8">
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, borderBottom: "1px solid #1d2f4a", paddingBottom: 9 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, borderBottom: "1px solid #0a1a2e", paddingBottom: 9 }}>
         <span style={{ fontSize: 9, letterSpacing: 2, color: "#9c80f8", fontWeight: 700 }}>AAVE POSITION GUIDANCE</span>
         <span style={{ fontSize: 8, color: "#253a55" }}>wstETH / USDC</span>
       </div>
@@ -444,12 +495,12 @@ function TradeActions({ actions }) {
   if (!actions) return null;
   return (
     <div style={{
-      background: "#08180f", border: "1px solid #00a87630",
+      background: "#040c08", border: "1px solid #00e89028",
       borderRadius: 8, padding: 16, marginBottom: 10,
     }}>
       <div style={{
-        fontSize: 11, letterSpacing: 0.5, color: "#00a876", fontWeight: 700,
-        marginBottom: 10, borderBottom: "1px solid #0f2820", paddingBottom: 9,
+        fontSize: 11, letterSpacing: 0.5, color: "#00e890", fontWeight: 700,
+        marginBottom: 10, borderBottom: "1px solid #081610", paddingBottom: 9,
         fontFamily: "'Inter', system-ui, sans-serif", textTransform: "uppercase",
       }}>
         This Week&apos;s Actions
@@ -465,10 +516,10 @@ function Regimes({ regime }) {
   return (
     <div className="regime-grid" style={{ marginBottom: 10 }}>
       {Object.entries(regime).map(([k, r]) => {
-        const c = regCol[r.signal] || "#f0a020";
+        const c = regCol[r.signal] || "#ffcc00";
         return (
           <div key={k} style={{
-            background: "#0b1525", padding: "12px 14px", borderRadius: 7,
+            background: "#060d1c", padding: "12px 14px", borderRadius: 7,
             borderLeft: `3px solid ${c}`,
           }}>
             <div style={{ fontSize: 10, color: "#6a8aaa", letterSpacing: 0.5, textTransform: "uppercase", fontFamily: "'Inter', system-ui, sans-serif", fontWeight: 600 }}>{k}</div>
@@ -495,7 +546,7 @@ function LiqBox({ text }) {
 // ─── KEY DATES ────────────────────────────────────────────────────────────────
 function KeyDates({ dates }) {
   if (!dates?.length) return null;
-  const ic = { critical: "#e03058", high: "#f0a020", medium: "#3a5272" };
+  const ic = { critical: "#ff2255", high: "#ffcc00", medium: "#3a5272" };
   return (
     <Card>
       <CardHeader>UPCOMING CATALYSTS</CardHeader>
@@ -534,18 +585,18 @@ function Section({ category, indicators }) {
   const mx = items.length * 2;
   const p = ((sc + mx) / (mx * 2)) * 100;
   let sl, sclr;
-  if (p > 62)      { sl = "BULL";  sclr = "#00a876"; }
-  else if (p > 38) { sl = "MIXED"; sclr = "#f0a020"; }
-  else             { sl = "BEAR";  sclr = "#e07848"; }
+  if (p > 62)      { sl = "BULL";  sclr = "#00e890"; }
+  else if (p > 38) { sl = "MIXED"; sclr = "#ffcc00"; }
+  else             { sl = "BEAR";  sclr = "#ff7040"; }
 
   return (
     <div style={{
-      background: "#0b1525", border: "1px solid #1d2f4a",
+      background: "#060d1c", border: "1px solid #0a1a2e",
       borderRadius: 8, padding: "12px 14px", marginBottom: 8,
     }}>
       <div style={{
         display: "flex", justifyContent: "space-between", alignItems: "center",
-        borderBottom: "1px solid #1d2f4a", paddingBottom: 10, marginBottom: 10,
+        borderBottom: "1px solid #0a1a2e", paddingBottom: 10, marginBottom: 10,
         flexWrap: "wrap", gap: 6,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -567,7 +618,7 @@ function Section({ category, indicators }) {
       {items.map((item) => (
         <div key={item.id} style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "8px 0", borderBottom: "1px solid #0c1828",
+          padding: "8px 0", borderBottom: "1px solid #050b18",
         }}>
           <div style={{ flex: 1, minWidth: 0, paddingRight: 10 }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
@@ -579,7 +630,7 @@ function Section({ category, indicators }) {
             )}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-            <span style={{ fontSize: 12, color: SC[item.data.signal] || "#f0a020", fontFamily: "'Inter', system-ui, sans-serif" }}>{item.data.trend}</span>
+            <span style={{ fontSize: 12, color: SC[item.data.signal] || "#ffcc00", fontFamily: "'Inter', system-ui, sans-serif" }}>{item.data.trend}</span>
             <Dot signal={item.data.signal} />
           </div>
         </div>
@@ -595,11 +646,11 @@ function RulesRef() {
       <CardHeader>TRADING RULES (BACKTESTED)</CardHeader>
       <div style={{ fontSize: 13, lineHeight: 2.1, fontFamily: "'Inter', system-ui, sans-serif" }}>
         {[
-          { color: "#00d4a8", label: "STRONG BULL (≥+4):", rule: "Max exposure all risk assets. Leverage acceptable. Gold 50%. Aave: maintain or increase debt." },
-          { color: "#00a876", label: "BULL (+2 to +3):",   rule: "Full long all assets. Maintain leverage. Gold 75%. Aave: hold current position." },
-          { color: "#f0a020", label: "NEUTRAL (-1 to +1):",rule: "SPY/QQQ to 50%. BTC/ETH to 75% (asymmetric upside). Gold full. No new leverage. Aave: consider partial repay." },
-          { color: "#e07848", label: "BEAR (-2 to -3):",   rule: "Exit equities. BTC 25%, ETH 20%. Gold 100%. Aave: repay $200K+ debt immediately." },
-          { color: "#e03058", label: "STRONG BEAR (≤-4):", rule: "Full cash + gold. Zero crypto. Aave: deleverage to <$400K debt or fully repay." },
+          { color: "#00ffd0", label: "STRONG BULL (≥+4):", rule: "Max exposure all risk assets. Leverage acceptable. Gold 50%. Aave: maintain or increase debt." },
+          { color: "#00e890", label: "BULL (+2 to +3):",   rule: "Full long all assets. Maintain leverage. Gold 75%. Aave: hold current position." },
+          { color: "#ffcc00", label: "NEUTRAL (-1 to +1):",rule: "SPY/QQQ to 50%. BTC/ETH to 75% (asymmetric upside). Gold full. No new leverage. Aave: consider partial repay." },
+          { color: "#ff7040", label: "BEAR (-2 to -3):",   rule: "Exit equities. BTC 25%, ETH 20%. Gold 100%. Aave: repay $200K+ debt immediately." },
+          { color: "#ff2255", label: "STRONG BEAR (≤-4):", rule: "Full cash + gold. Zero crypto. Aave: deleverage to <$400K debt or fully repay." },
         ].map((r) => (
           <div key={r.label} style={{ marginBottom: 4 }}>
             <span style={{ color: r.color }}>■</span>{" "}
@@ -652,6 +703,82 @@ function fmtLive(id, d) {
   return `${pStr} (${sign}${chg.toFixed(2)}% today)`;
 }
 
+// ─── SCAN HISTORY BAR ────────────────────────────────────────────────────────
+function ScanHistoryBar({ history, onClear }) {
+  if (!history?.length) return null;
+  const items   = [...history].reverse(); // oldest → newest (L→R)
+  const latest  = history[0];
+  const prev    = history[1];
+  const latestW = latest.weighted ?? latest.raw ?? 0;
+  const prevW   = prev != null ? (prev.weighted ?? prev.raw ?? 0) : null;
+  const delta   = prevW !== null ? latestW - prevW : null;
+
+  return (
+    <div style={{ background: "#060d1c", border: "1px solid #0c1c32", borderRadius: 7, padding: "12px 16px", marginBottom: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 6 }}>
+        <span style={{ fontSize: 10, letterSpacing: 1.5, color: "#1e3858", fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase" }}>
+          Scan History · {history.length} saved
+        </span>
+        <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+          {delta !== null && (
+            <span style={{ fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: delta > 0 ? "#00e890" : delta < 0 ? "#ff7040" : "#ffcc00", fontWeight: 700 }}>
+              {delta > 0 ? "↑" : delta < 0 ? "↓" : "→"} {delta > 0 ? "+" : ""}{delta} vs prev
+            </span>
+          )}
+          <button onClick={onClear} style={{ fontSize: 10, color: "#1a3050", background: "none", border: "none", cursor: "pointer", fontFamily: "'Inter', system-ui, sans-serif", letterSpacing: 0.5, padding: "2px 4px" }}>
+            clear
+          </button>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "flex-end" }}>
+        {items.map((entry, i) => {
+          const score    = entry.weighted ?? entry.raw ?? 0;
+          const key      = getSignalKey(score);
+          const cfg      = SIGNAL_CONFIG[key];
+          const d        = new Date(entry.ts);
+          const isLatest = i === items.length - 1;
+          return (
+            <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+              <div style={{
+                background: isLatest ? `${cfg.color}1e` : `${cfg.color}08`,
+                border:     `1px solid ${cfg.color}${isLatest ? "55" : "20"}`,
+                borderRadius: 4, padding: "3px 9px", minWidth: 38, textAlign: "center",
+                fontSize: 12, fontFamily: "'JetBrains Mono', monospace",
+                color: isLatest ? cfg.color : `${cfg.color}70`,
+                fontWeight: isLatest ? 700 : 400,
+                boxShadow: isLatest ? `0 0 12px ${cfg.color}18` : "none",
+              }}>
+                {score > 0 ? "+" : ""}{score}
+              </div>
+              <div style={{ fontSize: 9, color: isLatest ? "#2a4868" : "#111e30", fontFamily: "'Inter', system-ui, sans-serif" }}>
+                {`${d.getMonth() + 1}/${d.getDate()}`}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── OVERRIDE BANNER ─────────────────────────────────────────────────────────
+function OverrideBanner({ overrides }) {
+  if (!overrides?.length) return null;
+  return (
+    <div style={{ background: "#0c0408", border: "1px solid #ff225535", borderRadius: 7, padding: "12px 16px", marginBottom: 10 }}>
+      <div style={{ fontSize: 10, color: "#ff2255", fontWeight: 700, letterSpacing: 1.5, marginBottom: 8, textTransform: "uppercase", fontFamily: "'JetBrains Mono', monospace" }}>
+        ⚠ Override Alerts — Sizing Adjusted
+      </div>
+      {overrides.map((o, i) => (
+        <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 4, padding: "5px 0", borderTop: i > 0 ? "1px solid #1a0810" : "none" }}>
+          <span style={{ fontSize: 13, color: "#ff7040", fontFamily: "'JetBrains Mono', monospace" }}>{o.label}</span>
+          <span style={{ fontSize: 12, color: "#a03020", fontFamily: "'Inter', system-ui, sans-serif" }}>{o.msg}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── JSON REPAIR ─────────────────────────────────────────────────────────────
 function repairJson(str) {
   // Remove trailing commas before } or ]
@@ -673,36 +800,67 @@ export default function Dashboard() {
   const [error, setError]             = useState(null);
   const [progress, setProgress]       = useState("");
   const [lastFetched, setLastFetched] = useState(null);
+  const [history, setHistory]         = useState([]);
+  const [overrides, setOverrides]     = useState([]);
 
-  const signalKey = useMemo(() => {
+  // Load scan history from localStorage on mount
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]");
+      if (Array.isArray(saved)) setHistory(saved);
+    } catch {}
+  }, []);
+
+  // Weighted composite: normalize dim scores → -6..+6 range
+  const weightedComposite = useMemo(() => {
+    if (!data?.dimensions) return null;
+    return computeWeightedComposite(data.dimensions);
+  }, [data]);
+
+  const weightedSignalKey = useMemo(() => {
+    if (weightedComposite == null) return null;
+    return getSignalKey(weightedComposite);
+  }, [weightedComposite]);
+
+  // Fall back to raw LLM composite if dimensions unavailable
+  const rawSignalKey = useMemo(() => {
     if (data?.composite == null) return null;
     return getSignalKey(data.composite);
   }, [data]);
 
+  const signalKey = weightedSignalKey ?? rawSignalKey;
+
+  // Confirmation: history[0]=current scan, slice(1)=previous scans
+  const confirmation = useMemo(() => {
+    if (!weightedSignalKey || history.length < 2) return null;
+    return getConfirmation(history.slice(1), weightedSignalKey);
+  }, [history, weightedSignalKey]);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setOverrides([]);
 
     try {
-      // ── Step 1: fetch real-time prices from market APIs ──────────────────
+      // ── Step 1: fetch real-time prices ───────────────────────────────────
       setProgress("Fetching live market prices…");
       let livePrices = {};
       try {
         const pr = await fetch("/api/prices");
         if (pr.ok) livePrices = await pr.json();
-      } catch {} // non-fatal — LLM will search for missing ones
+      } catch {} // non-fatal
 
-      // ── Step 2: build prompt, injecting live values where available ───────
+      // ── Step 2: build prompt with live values injected ───────────────────
       const allInds = CATEGORIES.flatMap((c) =>
         c.indicators.map((i) => {
           const live = fmtLive(i.id, livePrices[i.id]);
           if (live) return `- ${i.id}: ${i.name} → LIVE VALUE: ${live} [use this exact value, do not search]`;
-          return `- ${i.id}: ${i.name} → search: "${i.query}"`;
+          return `- ${i.id}: ${i.name} → estimate: "${i.query}"`;
         })
       );
       const prompt = API_PROMPT + allInds.join("\n");
 
-      // ── Step 3: run LLM for scoring & analysis ────────────────────────────
+      // ── Step 3: LLM scoring ───────────────────────────────────────────────
       setProgress("Scoring macro regime…");
       const res = await fetch("/api/scan", {
         method: "POST",
@@ -718,11 +876,33 @@ export default function Dashboard() {
       const f = json.indexOf("{"), l = json.lastIndexOf("}");
       if (f !== -1 && l !== -1) json = json.slice(f, l + 1);
       let parsed;
-      try {
-        parsed = JSON.parse(json);
-      } catch {
-        parsed = JSON.parse(repairJson(json));
-      }
+      try { parsed = JSON.parse(json); }
+      catch { parsed = JSON.parse(repairJson(json)); }
+
+      // ── Step 4: save to localStorage history ─────────────────────────────
+      const wc = computeWeightedComposite(parsed.dimensions);
+      setHistory(prev => {
+        const entry = {
+          ts:       Date.now(),
+          weighted: wc,
+          raw:      parsed.composite,
+          dims: {
+            monetary:  parsed.dimensions?.monetary?.score  ?? 0,
+            inflation: parsed.dimensions?.inflation?.score ?? 0,
+            growth:    parsed.dimensions?.growth?.score    ?? 0,
+            liquidity: parsed.dimensions?.liquidity?.score ?? 0,
+            dollar:    parsed.dimensions?.dollar?.score    ?? 0,
+            sentiment: parsed.dimensions?.sentiment?.score ?? 0,
+          },
+          crypto: parsed.crypto_sentiment?.score ?? 0,
+        };
+        const updated = [entry, ...prev].slice(0, MAX_HISTORY);
+        try { localStorage.setItem(HISTORY_KEY, JSON.stringify(updated)); } catch {}
+        return updated;
+      });
+
+      // ── Step 5: hard override check ───────────────────────────────────────
+      setOverrides(getOverrides(livePrices));
       setData(parsed);
       setLastFetched(new Date());
     } catch (err) {
@@ -738,51 +918,50 @@ export default function Dashboard() {
       <Head>
         <title>Macro Regime Dashboard</title>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5" />
-        <meta name="theme-color" content="#070d1a" />
+        <meta name="theme-color" content="#040810" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
       </Head>
       <style>{STYLES}</style>
 
-      <div style={{
-        minHeight: "100vh", background: "#070d1a", color: "#a0b8d0",
-        fontFamily: "'Inter', system-ui, sans-serif",
-        padding: "16px 14px", maxWidth: 900, margin: "0 auto",
-      }}>
+      <div style={{ minHeight: "100vh", background: "#040810", color: "#7a9ab8", fontFamily: "'Inter', system-ui, sans-serif", padding: "16px 14px", maxWidth: 900, margin: "0 auto" }}>
+
         {/* Header */}
-        <div className="dash-header" style={{ marginBottom: 8 }}>
+        <div className="dash-header" style={{ marginBottom: 4 }}>
           <div>
-            <div style={{ fontSize: 10, letterSpacing: 2, color: "#3a5272", fontWeight: 600, textTransform: "uppercase" }}>Macro Regime</div>
-            <div style={{
-              fontSize: 24, fontWeight: 800, letterSpacing: -0.5,
-              fontFamily: "'Inter', system-ui, sans-serif", color: "#eaf0ff",
-            }}>
+            <div style={{ fontSize: 9, letterSpacing: 2.5, color: "#00ffd020", fontWeight: 700, textTransform: "uppercase", fontFamily: "'JetBrains Mono', monospace" }}>Macro Regime</div>
+            <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: -0.5, color: "#d0e8ff", marginTop: 2 }}>
               Trading Dashboard
             </div>
-            <div style={{ fontSize: 12, color: "#4a6282", marginTop: 3 }}>
-              6-dimension scoring · backtested Jan 2018 – Dec 2025 · weekly cadence
+            <div style={{ fontSize: 10, color: "#152436", marginTop: 3, fontFamily: "'JetBrains Mono', monospace", letterSpacing: 0.5 }}>
+              weighted 6-dim · backtested 2018–2025 · weekly
             </div>
           </div>
           {lastFetched && (
             <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 10, color: "#3a5272", letterSpacing: 0.5, fontWeight: 600 }}>Last scan</div>
-              <div style={{ fontSize: 12, color: "#5a7898" }}>{lastFetched.toLocaleString()}</div>
+              <div style={{ fontSize: 9, color: "#0a1828", letterSpacing: 1.5, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase" }}>Last scan</div>
+              <div style={{ fontSize: 10, color: "#1a3050", fontFamily: "'JetBrains Mono', monospace" }}>{lastFetched.toLocaleString()}</div>
             </div>
           )}
         </div>
 
+        {/* Accent line under header */}
+        <div style={{ height: 1, background: "linear-gradient(90deg, transparent 0%, #00ffd015 30%, #00ffd015 70%, transparent 100%)", margin: "10px 0 12px" }} />
+
         {/* Signal Legend */}
-        <div style={{ display: "flex", gap: 8, justifyContent: "center", padding: "8px 0 10px", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 8, justifyContent: "center", padding: "2px 0 10px", flexWrap: "wrap" }}>
           {Object.entries(SIGNAL_CONFIG).map(([k, v]) => (
             <div key={k} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              <span style={{
-                display: "inline-block", width: 6, height: 6, borderRadius: "50%",
-                background: v.color, boxShadow: `0 0 5px ${v.color}55`,
-              }} />
-              <span style={{ fontSize: 11, color: "#5a7898", fontFamily: "'Inter', system-ui, sans-serif" }}>{v.label} ({v.range})</span>
+              <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: "50%", background: v.color, boxShadow: `0 0 6px ${v.color}80` }} />
+              <span style={{ fontSize: 10, color: "#1a3050", fontFamily: "'JetBrains Mono', monospace" }}>{v.label} ({v.range})</span>
             </div>
           ))}
         </div>
+
+        {/* Scan History — persists from localStorage between sessions */}
+        {history.length > 0 && (
+          <ScanHistoryBar history={history} onClear={() => { localStorage.removeItem(HISTORY_KEY); setHistory([]); }} />
+        )}
 
         {/* Scan Button */}
         <div style={{ textAlign: "center", padding: "10px 0 16px" }}>
@@ -790,26 +969,31 @@ export default function Dashboard() {
             {loading ? "SCANNING…" : data ? "REFRESH SCAN" : "RUN WEEKLY SCAN"}
           </button>
           {loading && progress && (
-            <div style={{ fontSize: 12, color: "#4a6282", marginTop: 8, animation: "pulse 1.5s infinite" }}>
+            <div style={{ fontSize: 10, color: "#0e2238", marginTop: 8, animation: "pulse 1.5s infinite", fontFamily: "'JetBrains Mono', monospace" }}>
               {progress}
             </div>
           )}
-          {error && (
-            <div style={{ fontSize: 12, color: "#e03058", marginTop: 8 }}>Error: {error}</div>
-          )}
+          {error && <div style={{ fontSize: 12, color: "#ff2255", marginTop: 8 }}>Error: {error}</div>}
           {!data && !loading && (
-            <div style={{ fontSize: 12, color: "#3a5272", marginTop: 8 }}>
-              Searches 22 indicators · scores 6 dimensions + crypto overlay · outputs position sizing
+            <div style={{ fontSize: 10, color: "#0a1828", marginTop: 8, fontFamily: "'JetBrains Mono', monospace" }}>
+              22 indicators · weighted 6-dim · crypto overlay · position sizing
             </div>
           )}
         </div>
 
-        {/* Data */}
+        {/* Data section */}
         {data && (
           <div className="data-section">
-            <CompositeGauge composite={data.composite} narrative={data.composite_narrative} signalKey={signalKey} />
+            <CompositeGauge
+              composite={data.composite}
+              weightedComposite={weightedComposite}
+              narrative={data.composite_narrative}
+              signalKey={signalKey}
+              confirmation={confirmation}
+            />
+            <OverrideBanner overrides={overrides} />
             <TradeActions actions={data.trade_actions} />
-            <PositionTable signalKey={signalKey} cryptoScore={data.crypto_sentiment?.score} />
+            <PositionTable signalKey={signalKey} cryptoScore={data.crypto_sentiment?.score} overrides={overrides} />
             <AaveBox guidance={data.aave_guidance} />
             <DimensionBar dimensions={data.dimensions} cryptoSentiment={data.crypto_sentiment} />
             <Regimes regime={data.regime} />
@@ -819,7 +1003,7 @@ export default function Dashboard() {
               <Section key={c.id} category={c} indicators={data.indicators} />
             ))}
             <RulesRef />
-            <div style={{ textAlign: "center", padding: "14px 0 8px", fontSize: 11, color: "#253a52", letterSpacing: 1 }}>
+            <div style={{ textAlign: "center", padding: "14px 0 8px", fontSize: 10, color: "#0a1828", letterSpacing: 1.5, fontFamily: "'JetBrains Mono', monospace" }}>
               BACKTESTED FRAMEWORK — HYPOTHETICAL — NOT FINANCIAL ADVICE
             </div>
           </div>
