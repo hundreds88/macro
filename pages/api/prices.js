@@ -131,9 +131,20 @@ export default async function handler(req, res) {
       })
       .catch(() => {}),
 
-    // FRED — HY Credit Spreads (BAMLH0A0HYM2)
-    fetchFRED("BAMLH0A0HYM2")
-      .then(d => { if (d) out.hy_spread = d; })
+    // FRED — HY Credit Spreads with 4-week trend (BAMLH0A0HYM2, daily)
+    // ~20 weekdays = 4 calendar weeks; change4w = leading signal (direction > level)
+    fetchFREDObs("BAMLH0A0HYM2", 30)
+      .then(obs => {
+        if (!obs?.length) return;
+        const current = obs[0];
+        const prev4w  = obs[Math.min(19, obs.length - 1)];
+        out.hy_spread = {
+          value:    current.value,
+          date:     current.date,
+          prev4w:   prev4w.value,
+          change4w: parseFloat((current.value - prev4w.value).toFixed(2)),
+        };
+      })
       .catch(() => {}),
 
     // FRED — Real 10Y Yield / TIPS (DFII10)

@@ -92,20 +92,22 @@ const CATEGORIES = [
   {
     id: "crypto", name: "CRYPTO", weight: "Feeds: Crypto Sentiment overlay",
     indicators: [
-      { id: "btc",        name: "Bitcoin",       query: "Bitcoin price today" },
-      { id: "eth",        name: "Ethereum",      query: "Ethereum price today" },
-      { id: "etf_flows",  name: "BTC ETF Flows", query: "Bitcoin ETF net flows this week 2026" },
-      { id: "funding",    name: "Funding Rate",  query: "Bitcoin perpetual funding rate 2026" },
-      { id: "fear_greed", name: "Fear & Greed",  query: "crypto fear greed index 2026" },
+      { id: "btc",        name: "Bitcoin",         query: "Bitcoin price today" },
+      { id: "eth",        name: "Ethereum",        query: "Ethereum price today" },
+      { id: "btc_mvrv",  name: "BTC MVRV ⚡",     query: "Bitcoin MVRV ratio on-chain 2026" },
+      { id: "etf_flows",  name: "BTC ETF Flows",   query: "Bitcoin ETF net flows this week 2026" },
+      { id: "funding",    name: "Funding Rate",    query: "Bitcoin perpetual funding rate 2026" },
+      { id: "fear_greed", name: "Fear & Greed",    query: "crypto fear greed index 2026" },
     ],
   },
   {
     id: "liquidity", name: "GLOBAL LIQUIDITY", weight: "Core dimension: Liquidity",
     indicators: [
-      { id: "fed_bs",  name: "Fed Balance Sheet", query: "Fed balance sheet total assets 2026" },
-      { id: "rrp",     name: "Reverse Repo",      query: "Fed reverse repo balance 2026" },
-      { id: "tga",     name: "TGA",               query: "Treasury General Account balance 2026" },
-      { id: "us_m2",   name: "US M2 YoY",         query: "US M2 money supply growth 2026" },
+      { id: "fed_bs",    name: "Fed Balance Sheet", query: "Fed balance sheet total assets 2026" },
+      { id: "rrp",       name: "Reverse Repo",      query: "Fed reverse repo balance 2026" },
+      { id: "tga",       name: "TGA",               query: "Treasury General Account balance 2026" },
+      { id: "global_m2", name: "Global M2 ⚡",      query: "global M2 money supply YoY growth 2026 sum US EU China Japan UK central banks USD-equivalent" },
+      { id: "us_m2",     name: "US M2 YoY",         query: "US M2 money supply growth 2026" },
     ],
   },
   {
@@ -129,9 +131,10 @@ const CATEGORIES = [
   {
     id: "growth", name: "GROWTH & LABOR", weight: "Core dimension: Growth",
     indicators: [
-      { id: "pmi",          name: "PMI Composite",   query: "US PMI composite 2026" },
-      { id: "nfp",          name: "Nonfarm Payrolls",query: "nonfarm payrolls latest 2026" },
-      { id: "unemployment", name: "Unemployment",    query: "US unemployment rate 2026" },
+      { id: "pmi",           name: "PMI Composite",    query: "US PMI composite 2026" },
+      { id: "ism_new_orders", name: "ISM New Orders ⚡", query: "ISM manufacturing new orders sub-index latest 2026" },
+      { id: "nfp",           name: "Nonfarm Payrolls", query: "nonfarm payrolls latest 2026" },
+      { id: "unemployment",  name: "Unemployment",     query: "US unemployment rate 2026" },
     ],
   },
 ];
@@ -145,13 +148,14 @@ THE 6 DIMENSIONS (each scored -1, 0, or +1):
 
 1. MONETARY: Fed policy stance. Cutting/dovish=+1, Pause/mixed=0, Hiking/hawkish=-1
 2. INFLATION: Trend direction. Cooling toward 2%=+1, Sticky/mixed=0, Reaccelerating=-1
-3. GROWTH: Economic momentum. PMI expanding/jobs strong=+1, Mixed=0, Contracting/recession risk=-1
-4. LIQUIDITY: Net liquidity conditions. Fed BS expanding/RRP draining/M2 growing=+1, Mixed=0, QT/TGA building/M2 contracting=-1
+3. GROWTH: Economic momentum. PMI>53+ISM New Orders>53+jobs strong=+1, Mixed=0, ISM New Orders<48+PMI contracting+rising unemployment=-1. NOTE: ISM New Orders leads PMI by 1-2 months — weight it heavily.
+4. LIQUIDITY: Net liquidity conditions. Global M2 expanding+Fed BS growing+RRP draining=+1, Mixed=0, Global M2 contracting+QT active+TGA building=-1. NOTE: Global M2 (US+EU+China+Japan) leads risk assets by 12-16 weeks — weight it heavily.
 5. DOLLAR: DXY direction. Weakening=+1 (bullish risk assets), Stable=0, Strengthening=-1
-6. SENTIMENT: Risk appetite. VIX<15/spreads tight/ETF inflows=+1, Mixed=0, VIX>25/spreads wide/outflows=-1
+6. SENTIMENT: Risk appetite. VIX<15+HY spreads tightening+ETF inflows=+1, Mixed=0, VIX>25+HY spreads widening+outflows=-1. NOTE: HY spread DIRECTION (widening vs tightening) matters more than absolute level.
 
 CRYPTO SENTIMENT OVERLAY (scored -2 to +2):
-+2=Extreme greed+massive ETF inflows+positive funding, +1=Positive flows+neutral sentiment, 0=Mixed, -1=Outflows+fear+negative funding, -2=Capitulation+extreme fear+massive outflows
+MVRV context: <1=historically undervalued, 1-2=fair value, 2-3=elevated, >3.5=overheated.
++2=MVRV<2+extreme greed+massive ETF inflows+positive funding, +1=MVRV<2.5+positive flows, 0=Mixed/MVRV 2-3, -1=MVRV>3+outflows+fear+negative funding, -2=MVRV>3.5+capitulation+extreme fear+massive outflows
 
 Return ONLY valid JSON (no markdown, no backticks):
 - dimensions: {monetary,inflation,growth,liquidity,dollar,sentiment} each {score:-1|0|1, rationale:string}
@@ -174,10 +178,10 @@ const STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;500;600;700;800&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   html { -webkit-text-size-adjust: 100%; }
-  body { background: #040810; }
+  body { background: #0e0c1c; color: #a8a4cc; }
 
   ::-webkit-scrollbar { width: 3px; }
-  ::-webkit-scrollbar-thumb { background: #0e1f38; border-radius: 2px; }
+  ::-webkit-scrollbar-thumb { background: #2c2848; border-radius: 2px; }
 
   @keyframes pulse  { 0%,100%{opacity:1} 50%{opacity:.3} }
   @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
@@ -186,7 +190,7 @@ const STYLES = `
   .data-section { animation: fadeIn 0.35s ease; }
 
   .scan-btn {
-    background: #040810;
+    background: #0e0c1c;
     border: 1px solid #00ffd030;
     color: #00ffd0;
     padding: 14px 48px;
@@ -205,7 +209,7 @@ const STYLES = `
     color: #00ffd0;
     box-shadow: 0 0 32px #00ffd018, 0 0 12px #00ffd00a, inset 0 0 24px #00ffd006;
   }
-  .scan-btn:disabled { background: #060d1c; border-color: #0e1f38; color: #1e3050; cursor: not-allowed; }
+  .scan-btn:disabled { background: #161428; border-color: #2c2848; color: #2c2848; cursor: not-allowed; }
 
   /* Responsive grids */
   .dim-grid    { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
@@ -238,8 +242,8 @@ const regCol = { bull: "#00e890", bear: "#ff7040", neutral: "#ffcc00" };
 function Card({ children, style, accent }) {
   return (
     <div style={{
-      background: "#060d1c",
-      border: `1px solid ${accent ? `${accent}22` : "#0c1c32"}`,
+      background: "#161428",
+      border: `1px solid ${accent ? `${accent}22` : "#2c2848"}`,
       borderRadius: 7,
       padding: 16,
       marginBottom: 10,
@@ -254,7 +258,7 @@ function CardHeader({ children, color = "#3d6080" }) {
   return (
     <div style={{
       fontSize: 11, letterSpacing: 1.2, color, fontWeight: 700,
-      marginBottom: 12, borderBottom: "1px solid #0a1a2e", paddingBottom: 9,
+      marginBottom: 12, borderBottom: "1px solid #201c38", paddingBottom: 9,
       fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase",
     }}>
       {children}
@@ -294,17 +298,17 @@ function DimensionBar({ dimensions, cryptoSentiment }) {
           const c = scoreColor(dim.score);
           return (
             <div key={d.key} style={{
-              textAlign: "center", background: "#081628", borderRadius: 6,
+              textAlign: "center", background: "#1e1c35", borderRadius: 6,
               padding: "12px 6px", border: `1px solid ${c}25`,
             }}>
-              <div style={{ fontSize: 10, color: "#6a8aaa", letterSpacing: 0.5, fontFamily: "'Inter', system-ui, sans-serif", fontWeight: 600 }}>{d.label} <span style={{ color: "#2d4560", fontSize: 9 }}>{d.w}×</span></div>
+              <div style={{ fontSize: 10, color: "#7878a8", letterSpacing: 0.5, fontFamily: "'Inter', system-ui, sans-serif", fontWeight: 600 }}>{d.label} <span style={{ color: "#2d4560", fontSize: 9 }}>{d.w}×</span></div>
               <div style={{
                 fontSize: 24, fontWeight: 800, color: c, lineHeight: 1.1,
                 fontFamily: "'JetBrains Mono', monospace", margin: "4px 0",
               }}>
                 {scoreLabel(dim.score)}
               </div>
-              <div style={{ fontSize: 10, color: "#6a8aaa", lineHeight: 1.4, minHeight: 24, fontFamily: "'Inter', system-ui, sans-serif" }}>
+              <div style={{ fontSize: 10, color: "#7878a8", lineHeight: 1.4, minHeight: 24, fontFamily: "'Inter', system-ui, sans-serif" }}>
                 {dim.rationale}
               </div>
             </div>
@@ -314,14 +318,14 @@ function DimensionBar({ dimensions, cryptoSentiment }) {
 
       {cryptoSentiment && (
         <div style={{
-          marginTop: 10, padding: "12px 14px", background: "#081628", borderRadius: 6,
+          marginTop: 10, padding: "12px 14px", background: "#1e1c35", borderRadius: 6,
           border: `1px solid ${scoreColor(cryptoSentiment.score)}25`,
           display: "flex", justifyContent: "space-between", alignItems: "center",
           flexWrap: "wrap", gap: 8,
         }}>
           <div>
-            <div style={{ fontSize: 11, color: "#6a8aaa", fontWeight: 600, fontFamily: "'Inter', system-ui, sans-serif" }}>Crypto Sentiment Overlay</div>
-            <div style={{ fontSize: 12, color: "#7a9ab8", marginTop: 2, fontFamily: "'Inter', system-ui, sans-serif" }}>{cryptoSentiment.rationale}</div>
+            <div style={{ fontSize: 11, color: "#7878a8", fontWeight: 600, fontFamily: "'Inter', system-ui, sans-serif" }}>Crypto Sentiment Overlay</div>
+            <div style={{ fontSize: 12, color: "#9898cc", marginTop: 2, fontFamily: "'Inter', system-ui, sans-serif" }}>{cryptoSentiment.rationale}</div>
           </div>
           <span style={{
             fontSize: 22, fontWeight: 800, color: scoreColor(cryptoSentiment.score),
@@ -356,7 +360,7 @@ function CompositeGauge({ composite, weightedComposite, narrative, signalKey, co
 
       <div
         className="gauge-sub"
-        style={{ fontSize: 13, color: "#6a8aaa", marginTop: 8, display: "flex", justifyContent: "center", alignItems: "center", gap: 10, flexWrap: "wrap", fontFamily: "'Inter', system-ui, sans-serif" }}
+        style={{ fontSize: 13, color: "#7878a8", marginTop: 8, display: "flex", justifyContent: "center", alignItems: "center", gap: 10, flexWrap: "wrap", fontFamily: "'Inter', system-ui, sans-serif" }}
       >
         <span>
           Weighted:{" "}
@@ -369,18 +373,18 @@ function CompositeGauge({ composite, weightedComposite, narrative, signalKey, co
           {" "}/ ±6
         </span>
         <span style={{ color: "#2d4560" }}>·</span>
-        <span style={{ color: "#8ab0cc" }}>{cfg.action}</span>
+        <span style={{ color: "#9898cc" }}>{cfg.action}</span>
       </div>
 
       {/* Confirmation badge */}
       {confirmation && (
         <div style={{ marginTop: 10, display: "flex", justifyContent: "center" }}>
           {confirmation.isNew ? (
-            <span style={{ fontSize: 11, padding: "4px 12px", borderRadius: 4, background: "#100c00", border: "1px solid #ffcc0050", color: "#ffcc00", fontFamily: "'Inter', system-ui, sans-serif" }}>
+            <span style={{ fontSize: 11, padding: "4px 12px", borderRadius: 4, background: "#1c1800", border: "1px solid #ffcc0050", color: "#ffcc00", fontFamily: "'Inter', system-ui, sans-serif" }}>
               ⚠ New regime · 1st reading · confirm next scan before acting
             </span>
           ) : (
-            <span style={{ fontSize: 11, padding: "4px 12px", borderRadius: 4, background: "#060f0a", border: "1px solid #00e89040", color: "#00e890", fontFamily: "'Inter', system-ui, sans-serif" }}>
+            <span style={{ fontSize: 11, padding: "4px 12px", borderRadius: 4, background: "#0c1a10", border: "1px solid #00e89040", color: "#00e890", fontFamily: "'Inter', system-ui, sans-serif" }}>
               ✓ Confirmed · {confirmation.streak} consecutive readings
             </span>
           )}
@@ -388,7 +392,7 @@ function CompositeGauge({ composite, weightedComposite, narrative, signalKey, co
       )}
 
       {narrative && (
-        <div style={{ fontSize: 14, color: "#8ab0cc", marginTop: 14, lineHeight: 1.7, maxWidth: 620, margin: "14px auto 0", fontFamily: "'Inter', system-ui, sans-serif" }}>
+        <div style={{ fontSize: 14, color: "#9898cc", marginTop: 14, lineHeight: 1.7, maxWidth: 620, margin: "14px auto 0", fontFamily: "'Inter', system-ui, sans-serif" }}>
           {narrative}
         </div>
       )}
@@ -399,7 +403,7 @@ function CompositeGauge({ composite, weightedComposite, narrative, signalKey, co
           <div style={{
             position: "absolute", top: -5, left: `${Math.max(3, Math.min(97, pct))}%`,
             transform: "translateX(-50%)", width: 16, height: 16,
-            background: cfg.color, borderRadius: "50%", border: "3px solid #040810",
+            background: cfg.color, borderRadius: "50%", border: "3px solid #0e0c1c",
             boxShadow: `0 0 14px ${cfg.color}80, 0 0 5px ${cfg.color}`,
             transition: "left 0.6s cubic-bezier(0.4, 0, 0.2, 1)",
           }} />
@@ -452,7 +456,7 @@ function PositionTable({ signalKey, cryptoScore, overrides }) {
           }
           const isModified = adjusted !== base;
           return (
-            <div key={a.key} style={{ textAlign: "center", background: "#081628", borderRadius: 6, padding: "12px 6px", border: `1px solid ${a.color}18` }}>
+            <div key={a.key} style={{ textAlign: "center", background: "#1e1c35", borderRadius: 6, padding: "12px 6px", border: `1px solid ${a.color}18` }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: a.color, fontFamily: "'JetBrains Mono', monospace" }}>{a.label}</div>
               <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1, color: adjusted > 0 ? "#c5d5ee" : "#0c1c30", margin: "6px 0", fontFamily: "'Instrument Sans', sans-serif" }}>
                 {adjusted}%
@@ -462,8 +466,8 @@ function PositionTable({ signalKey, cryptoScore, overrides }) {
                   base {base}% {cryptoMod > 0 ? "↑" : "↓"} overlay
                 </div>
               )}
-              <div style={{ width: "100%", height: 3, background: "#0a1a2e", borderRadius: 2, marginTop: 6 }}>
-                <div style={{ width: `${adjusted}%`, height: "100%", background: adjusted > 0 ? a.color : "#0a1a2e", borderRadius: 2, transition: "width 0.4s ease" }} />
+              <div style={{ width: "100%", height: 3, background: "#201c38", borderRadius: 2, marginTop: 6 }}>
+                <div style={{ width: `${adjusted}%`, height: "100%", background: adjusted > 0 ? a.color : "#201c38", borderRadius: 2, transition: "width 0.4s ease" }} />
               </div>
             </div>
           );
@@ -481,11 +485,11 @@ function AaveBox({ guidance }) {
   if (!guidance) return null;
   return (
     <Card accent="#9c80f8">
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, borderBottom: "1px solid #0a1a2e", paddingBottom: 9 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, borderBottom: "1px solid #201c38", paddingBottom: 9 }}>
         <span style={{ fontSize: 9, letterSpacing: 2, color: "#9c80f8", fontWeight: 700 }}>AAVE POSITION GUIDANCE</span>
         <span style={{ fontSize: 8, color: "#253a55" }}>wstETH / USDC</span>
       </div>
-      <div style={{ fontSize: 14, color: "#8ab0cc", lineHeight: 1.7, fontFamily: "'Inter', system-ui, sans-serif" }}>{guidance}</div>
+      <div style={{ fontSize: 14, color: "#9898cc", lineHeight: 1.7, fontFamily: "'Inter', system-ui, sans-serif" }}>{guidance}</div>
     </Card>
   );
 }
@@ -495,7 +499,7 @@ function TradeActions({ actions }) {
   if (!actions) return null;
   return (
     <div style={{
-      background: "#040c08", border: "1px solid #00e89028",
+      background: "#0e1510", border: "1px solid #00e89028",
       borderRadius: 8, padding: 16, marginBottom: 10,
     }}>
       <div style={{
@@ -519,12 +523,12 @@ function Regimes({ regime }) {
         const c = regCol[r.signal] || "#ffcc00";
         return (
           <div key={k} style={{
-            background: "#060d1c", padding: "12px 14px", borderRadius: 7,
+            background: "#161428", padding: "12px 14px", borderRadius: 7,
             borderLeft: `3px solid ${c}`,
           }}>
-            <div style={{ fontSize: 10, color: "#6a8aaa", letterSpacing: 0.5, textTransform: "uppercase", fontFamily: "'Inter', system-ui, sans-serif", fontWeight: 600 }}>{k}</div>
+            <div style={{ fontSize: 10, color: "#7878a8", letterSpacing: 0.5, textTransform: "uppercase", fontFamily: "'Inter', system-ui, sans-serif", fontWeight: 600 }}>{k}</div>
             <div style={{ fontSize: 15, fontWeight: 700, color: c, marginTop: 4, lineHeight: 1.1, fontFamily: "'Inter', system-ui, sans-serif" }}>{r.state}</div>
-            <div style={{ fontSize: 12, color: "#7a9ab8", marginTop: 5, lineHeight: 1.5, fontFamily: "'Inter', system-ui, sans-serif" }}>{r.detail}</div>
+            <div style={{ fontSize: 12, color: "#9898cc", marginTop: 5, lineHeight: 1.5, fontFamily: "'Inter', system-ui, sans-serif" }}>{r.detail}</div>
           </div>
         );
       })}
@@ -538,7 +542,7 @@ function LiqBox({ text }) {
   return (
     <Card>
       <CardHeader>Global Liquidity</CardHeader>
-      <div style={{ fontSize: 14, color: "#8ab0cc", lineHeight: 1.7, fontFamily: "'Inter', system-ui, sans-serif" }}>{text}</div>
+      <div style={{ fontSize: 14, color: "#9898cc", lineHeight: 1.7, fontFamily: "'Inter', system-ui, sans-serif" }}>{text}</div>
     </Card>
   );
 }
@@ -564,7 +568,7 @@ function KeyDates({ dates }) {
           }}>
             {d.date}
           </span>
-          <span style={{ fontSize: 13, color: "#8ab0cc", fontFamily: "'Inter', system-ui, sans-serif" }}>{d.event}</span>
+          <span style={{ fontSize: 13, color: "#9898cc", fontFamily: "'Inter', system-ui, sans-serif" }}>{d.event}</span>
         </div>
       ))}
     </Card>
@@ -591,16 +595,16 @@ function Section({ category, indicators }) {
 
   return (
     <div style={{
-      background: "#060d1c", border: "1px solid #0a1a2e",
+      background: "#161428", border: "1px solid #201c38",
       borderRadius: 8, padding: "12px 14px", marginBottom: 8,
     }}>
       <div style={{
         display: "flex", justifyContent: "space-between", alignItems: "center",
-        borderBottom: "1px solid #0a1a2e", paddingBottom: 10, marginBottom: 10,
+        borderBottom: "1px solid #201c38", paddingBottom: 10, marginBottom: 10,
         flexWrap: "wrap", gap: 6,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 12, letterSpacing: 0.5, color: "#8ab0cc", fontWeight: 700, fontFamily: "'Inter', system-ui, sans-serif" }}>{category.name}</span>
+          <span style={{ fontSize: 12, letterSpacing: 0.5, color: "#9898cc", fontWeight: 700, fontFamily: "'Inter', system-ui, sans-serif" }}>{category.name}</span>
           {category.weight && <span style={{ fontSize: 11, color: "#4a6282", fontFamily: "'Inter', system-ui, sans-serif" }}>{category.weight}</span>}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
@@ -618,7 +622,7 @@ function Section({ category, indicators }) {
       {items.map((item) => (
         <div key={item.id} style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "8px 0", borderBottom: "1px solid #050b18",
+          padding: "8px 0", borderBottom: "1px solid #161428",
         }}>
           <div style={{ flex: 1, minWidth: 0, paddingRight: 10 }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
@@ -654,7 +658,7 @@ function RulesRef() {
         ].map((r) => (
           <div key={r.label} style={{ marginBottom: 4 }}>
             <span style={{ color: r.color }}>■</span>{" "}
-            <strong style={{ color: "#8ab0cc" }}>{r.label}</strong>{" "}
+            <strong style={{ color: "#9898cc" }}>{r.label}</strong>{" "}
             <span style={{ color: "#5a7898" }}>{r.rule}</span>
           </div>
         ))}
@@ -671,7 +675,14 @@ function RulesRef() {
 function fmtLive(id, d) {
   if (!d) return null;
   // ── FRED series (no prev close available) ─────────────────────────────────
-  if (id === "hy_spread")       return `${d.value.toFixed(2)}% OAS`;
+  if (id === "hy_spread") {
+    if (d.change4w != null) {
+      const dir  = d.change4w > 0.05 ? "widening" : d.change4w < -0.05 ? "tightening" : "stable";
+      const sign = d.change4w >= 0 ? "+" : "";
+      return `${d.value.toFixed(2)}% OAS (${sign}${d.change4w.toFixed(2)}% 4-wk — ${dir})`;
+    }
+    return `${d.value.toFixed(2)}% OAS`;
+  }
   if (id === "real_yield")      return `${d.value.toFixed(2)}%`;
   if (id === "ffr")             return `${d.value.toFixed(2)}%`;
   if (id === "unemployment")    return `${d.value.toFixed(1)}%`;
@@ -714,7 +725,7 @@ function ScanHistoryBar({ history, onClear }) {
   const delta   = prevW !== null ? latestW - prevW : null;
 
   return (
-    <div style={{ background: "#060d1c", border: "1px solid #0c1c32", borderRadius: 7, padding: "12px 16px", marginBottom: 10 }}>
+    <div style={{ background: "#161428", border: "1px solid #2c2848", borderRadius: 7, padding: "12px 16px", marginBottom: 10 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 6 }}>
         <span style={{ fontSize: 10, letterSpacing: 1.5, color: "#1e3858", fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase" }}>
           Scan History · {history.length} saved
@@ -765,7 +776,7 @@ function ScanHistoryBar({ history, onClear }) {
 function OverrideBanner({ overrides }) {
   if (!overrides?.length) return null;
   return (
-    <div style={{ background: "#0c0408", border: "1px solid #ff225535", borderRadius: 7, padding: "12px 16px", marginBottom: 10 }}>
+    <div style={{ background: "#1c0c1c", border: "1px solid #ff225535", borderRadius: 7, padding: "12px 16px", marginBottom: 10 }}>
       <div style={{ fontSize: 10, color: "#ff2255", fontWeight: 700, letterSpacing: 1.5, marginBottom: 8, textTransform: "uppercase", fontFamily: "'JetBrains Mono', monospace" }}>
         ⚠ Override Alerts — Sizing Adjusted
       </div>
@@ -918,13 +929,13 @@ export default function Dashboard() {
       <Head>
         <title>Macro Regime Dashboard</title>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5" />
-        <meta name="theme-color" content="#040810" />
+        <meta name="theme-color" content="#0e0c1c" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
       </Head>
       <style>{STYLES}</style>
 
-      <div style={{ minHeight: "100vh", background: "#040810", color: "#7a9ab8", fontFamily: "'Inter', system-ui, sans-serif", padding: "16px 14px", maxWidth: 900, margin: "0 auto" }}>
+      <div style={{ minHeight: "100vh", background: "#0e0c1c", color: "#a8a4cc", fontFamily: "'Inter', system-ui, sans-serif", padding: "16px 14px", maxWidth: 900, margin: "0 auto" }}>
 
         {/* Header */}
         <div className="dash-header" style={{ marginBottom: 4 }}>
