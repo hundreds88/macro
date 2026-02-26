@@ -1,12 +1,12 @@
 import Head from "next/head";
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 const ALLOC_MATRIX = {
   STRONG_BULL: { btc: 100, eth: 100, spy: 100, qqq: 100, gld: 50 },
-  BULL:        { btc: 100, eth: 100, spy: 100, qqq: 100, gld: 75 },
-  NEUTRAL:     { btc: 75,  eth: 70,  spy: 50,  qqq: 50,  gld: 100 },
-  BEAR:        { btc: 25,  eth: 20,  spy: 0,   qqq: 0,   gld: 100 },
+  BULL:        { btc: 80,  eth: 80,  spy: 100, qqq: 100, gld: 75 },
+  NEUTRAL:     { btc: 75,  eth: 75,  spy: 50,  qqq: 50,  gld: 100 },
+  BEAR:        { btc: 25,  eth: 25,  spy: 25,  qqq: 25,  gld: 100 },
   STRONG_BEAR: { btc: 0,   eth: 0,   spy: 0,   qqq: 0,   gld: 100 },
 };
 
@@ -66,14 +66,50 @@ function getConfirmation(prevHistory, currentKey) {
 }
 
 // ─── HARD OVERRIDES ───────────────────────────────────────────────────────────
-function getOverrides(livePrices) {
+function getOverrides(livePrices, dimensions) {
   const out = [];
+  const monetaryBullish = dimensions?.monetary?.score === 1;
+
   const vix = livePrices?.vix?.price;
-  if (vix > 30)  out.push({ type: "BEAR",         label: `VIX ${vix.toFixed(1)} > 30`,              msg: "Force BEAR sizing" });
-  const hy = livePrices?.hy_spread?.value;
-  if (hy > 5.0)  out.push({ type: "BEAR",         label: `HY Spreads ${hy.toFixed(2)}% > 500bp`,   msg: "Force BEAR sizing" });
+  if (vix > 30 && !monetaryBullish) {
+    out.push({ type: "BEAR", label: `VIX ${vix.toFixed(1)} > 30`, msg: "Force BEAR sizing" });
+  }
+  if (vix > 30 && monetaryBullish) {
+    out.push({ type: "WARNING", label: `VIX ${vix.toFixed(1)} > 30 (monetary dovish — override suppressed)`, msg: "Monitor closely" });
+  }
+
+  const hy = livePrices?.hy_spread?.value; // percentage points (e.g. 5.2 = 520bp)
+  if (hy > 5.0) out.push({ type: "BEAR", label: `HY Spreads ${hy.toFixed(2)}% > 500bp`, msg: "Force BEAR sizing" });
+
   const ry = livePrices?.real_yield?.value;
-  if (ry > 3.0)  out.push({ type: "CRYPTO_REDUCE", label: `Real Yield ${ry.toFixed(2)}% > 3.0%`,   msg: "−30% crypto allocation" });
+  if (ry > 3.0) out.push({ type: "CRYPTO_REDUCE", label: `Real Yield ${ry.toFixed(2)}% > 3.0%`, msg: "−30% crypto allocation" });
+
+  return out;
+}
+
+// Fallback overrides parsed from LLM indicator data when live prices unavailable
+function getIndicatorOverrides(indicators) {
+  const out = [];
+  if (!indicators) return out;
+
+  const vixInd = indicators.vix;
+  if (vixInd?.value) {
+    const vixVal = parseFloat(String(vixInd.value).replace(/[^0-9.]/g, ""));
+    if (vixVal > 30) out.push({ type: "BEAR", label: `VIX ${vixVal.toFixed(1)} > 30 (from scan)`, msg: "Force BEAR sizing" });
+  }
+
+  const hyInd = indicators.hy_spread;
+  if (hyInd?.value) {
+    const hyVal = parseFloat(String(hyInd.value).replace(/[^0-9.]/g, ""));
+    if (hyVal > 5.0) out.push({ type: "BEAR", label: `HY Spreads ${hyVal.toFixed(2)}% > 500bp (from scan)`, msg: "Force BEAR sizing" });
+  }
+
+  const ryInd = indicators.real_yield;
+  if (ryInd?.value) {
+    const ryVal = parseFloat(String(ryInd.value).replace(/[^0-9.]/g, ""));
+    if (ryVal > 3.0) out.push({ type: "CRYPTO_REDUCE", label: `Real Yield ${ryVal.toFixed(2)}% > 3.0% (from scan)`, msg: "−30% crypto allocation" });
+  }
+
   return out;
 }
 
@@ -389,8 +425,17 @@ function CompositeGauge({ composite, weightedComposite, narrative, signalKey, co
       {confirmation && (
         <div style={{ marginTop: 10, display: "flex", justifyContent: "center" }}>
           {confirmation.isNew ? (
-            <span style={{ fontSize: 11, padding: "4px 12px", borderRadius: 4, background: "#1a1400", border: "1px solid #f0c02050", color: "#f0c020", fontFamily: "'Inter', system-ui, sans-serif" }}>
-              ⚠ New regime · 1st reading · confirm next scan before acting
+            <span style={{
+              fontSize: 11, padding: "4px 12px", borderRadius: 4,
+              background: (signalKey === "BEAR" || signalKey === "STRONG_BEAR") ? "#1e0a10" : "#1a1400",
+              border: `1px solid ${(signalKey === "BEAR" || signalKey === "STRONG_BEAR") ? "#ff225550" : "#f0c02050"}`,
+              color: (signalKey === "BEAR" || signalKey === "STRONG_BEAR") ? "#ff7040" : "#f0c020",
+              fontFamily: "'Inter', system-ui, sans-serif",
+            }}>
+              {(signalKey === "BEAR" || signalKey === "STRONG_BEAR")
+                ? "⚠ New BEAR regime · 1st reading · equities wait for confirmation · Aave deleverage should NOT wait"
+                : "⚠ New regime · 1st reading · confirm next scan before acting"
+              }
             </span>
           ) : (
             <span style={{ fontSize: 11, padding: "4px 12px", borderRadius: 4, background: "#0a2018", border: "1px solid #00e09040", color: "#00e090", fontFamily: "'Inter', system-ui, sans-serif" }}>
@@ -587,7 +632,7 @@ function KeyDates({ dates }) {
 // ─── INDICATOR SECTION ────────────────────────────────────────────────────────
 const SCORES_MAP = { strong_bull: 2, bull: 1, neutral: 0, bear: -1, strong_bear: -2 };
 
-function Section({ category, indicators }) {
+function Section({ category, indicators, liveIds }) {
   if (!indicators) return null;
   const items = category.indicators
     .map((ind) => ({ ...ind, data: indicators[ind.id] }))
@@ -635,7 +680,12 @@ function Section({ category, indicators }) {
         }}>
           <div style={{ flex: 1, minWidth: 0, paddingRight: 10 }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 13, color: "#9090e8", fontFamily: "'Inter', system-ui, sans-serif", fontWeight: 500 }}>{item.name}</span>
+              <span style={{ fontSize: 13, color: "#9090e8", fontFamily: "'Inter', system-ui, sans-serif", fontWeight: 500 }}>
+                {item.name}
+                <span style={{ fontSize: 8, color: liveIds?.has(item.id) ? "#00e090" : "#7068a8", marginLeft: 4, fontWeight: 700, letterSpacing: 0.5 }}>
+                  {liveIds?.has(item.id) ? "LIVE" : "EST"}
+                </span>
+              </span>
               <span style={{ fontSize: 13, color: "#60c0ff", fontFamily: "'JetBrains Mono', monospace", fontWeight: 700 }}>{item.data.value}</span>
             </div>
             {item.data.note && (
@@ -660,9 +710,9 @@ function RulesRef() {
       <div style={{ fontSize: 13, lineHeight: 2.1, fontFamily: "'Inter', system-ui, sans-serif" }}>
         {[
           { color: "#00ffd0", label: "STRONG BULL (≥+4):", rule: "Max exposure all risk assets. Leverage acceptable. Gold 50%. Aave: maintain or increase debt." },
-          { color: "#00e090", label: "BULL (+2 to +3):",   rule: "Full long all assets. Maintain leverage. Gold 75%. Aave: hold current position." },
-          { color: "#f0c020", label: "NEUTRAL (-1 to +1):",rule: "SPY/QQQ to 50%. BTC/ETH to 75% (asymmetric upside). Gold full. No new leverage. Aave: consider partial repay." },
-          { color: "#ff7040", label: "BEAR (-2 to -3):",   rule: "Exit equities. BTC 25%, ETH 20%. Gold 100%. Aave: repay $200K+ debt immediately." },
+          { color: "#00e090", label: "BULL (+2 to +3):",   rule: "BTC/ETH to 80%. SPY/QQQ full. Maintain leverage. Gold 75%. Aave: hold current position." },
+          { color: "#f0c020", label: "NEUTRAL (-1 to +1):",rule: "SPY/QQQ to 50%. BTC/ETH to 75%. Gold full. No new leverage. Aave: consider partial repay." },
+          { color: "#ff7040", label: "BEAR (-2 to -3):",   rule: "SPY/QQQ to 25%. BTC/ETH 25%. Gold 100%. Aave: repay $200K+ debt immediately." },
           { color: "#ff2255", label: "STRONG BEAR (≤-4):", rule: "Full cash + gold. Zero crypto. Aave: deleverage to <$400K debt or fully repay." },
         ].map((r) => (
           <div key={r.label} style={{ marginBottom: 4 }}>
@@ -723,8 +773,25 @@ function fmtLive(id, d) {
   return `${pStr} (${sign}${chg.toFixed(2)}% today)`;
 }
 
+// ─── CSV EXPORT ──────────────────────────────────────────────────────────────
+function exportHistoryCSV(history) {
+  const headers = "date,weighted,raw,monetary,inflation,growth,liquidity,dollar,sentiment,crypto\n";
+  const rows = history.map(h => {
+    const d = new Date(h.ts).toISOString().slice(0, 10);
+    const dims = h.dims || {};
+    return `${d},${h.weighted ?? ""},${h.raw ?? ""},${dims.monetary ?? ""},${dims.inflation ?? ""},${dims.growth ?? ""},${dims.liquidity ?? ""},${dims.dollar ?? ""},${dims.sentiment ?? ""},${h.crypto ?? ""}`;
+  }).join("\n");
+  const blob = new Blob([headers + rows], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `macro-regime-history-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 // ─── SCAN HISTORY BAR ────────────────────────────────────────────────────────
-function ScanHistoryBar({ history, onClear }) {
+function ScanHistoryBar({ history, onClear, storageAvailable }) {
   if (!history?.length) return null;
   const items   = [...history].reverse(); // oldest → newest (L→R)
   const latest  = history[0];
@@ -738,6 +805,11 @@ function ScanHistoryBar({ history, onClear }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 6 }}>
         <span style={{ fontSize: 10, letterSpacing: 1.5, color: "#a090e0", fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase" }}>
           Scan History · {history.length} saved
+          {storageAvailable === false && (
+            <span style={{ fontSize: 9, color: "#ff7040", marginLeft: 6, letterSpacing: 0, textTransform: "none" }}>
+              (history not persisted — private mode)
+            </span>
+          )}
         </span>
         <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
           {delta !== null && (
@@ -745,6 +817,9 @@ function ScanHistoryBar({ history, onClear }) {
               {delta > 0 ? "↑" : delta < 0 ? "↓" : "→"} {delta > 0 ? "+" : ""}{delta} vs prev
             </span>
           )}
+          <button onClick={() => exportHistoryCSV(history)} style={{ fontSize: 10, color: "#7068a8", background: "none", border: "none", cursor: "pointer", fontFamily: "'Inter', system-ui, sans-serif", letterSpacing: 0.5, padding: "2px 4px" }}>
+            export csv
+          </button>
           <button onClick={onClear} style={{ fontSize: 10, color: "#7068a8", background: "none", border: "none", cursor: "pointer", fontFamily: "'Inter', system-ui, sans-serif", letterSpacing: 0.5, padding: "2px 4px" }}>
             clear
           </button>
@@ -784,26 +859,53 @@ function ScanHistoryBar({ history, onClear }) {
 // ─── OVERRIDE BANNER ─────────────────────────────────────────────────────────
 function OverrideBanner({ overrides }) {
   if (!overrides?.length) return null;
+  const hardOverrides = overrides.filter(o => o.type !== "WARNING");
+  const warnings = overrides.filter(o => o.type === "WARNING");
   return (
-    <div style={{ background: "#1e0a10", border: "1px solid #ff225535", borderRadius: 7, padding: "12px 16px", marginBottom: 10 }}>
-      <div style={{ fontSize: 10, color: "#ff2255", fontWeight: 700, letterSpacing: 1.5, marginBottom: 8, textTransform: "uppercase", fontFamily: "'JetBrains Mono', monospace" }}>
-        ⚠ Override Alerts — Sizing Adjusted
-      </div>
-      {overrides.map((o, i) => (
-        <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 4, padding: "5px 0", borderTop: i > 0 ? "1px solid #f0d8e0" : "none" }}>
-          <span style={{ fontSize: 13, color: "#ff7040", fontFamily: "'JetBrains Mono', monospace" }}>{o.label}</span>
-          <span style={{ fontSize: 12, color: "#a03020", fontFamily: "'Inter', system-ui, sans-serif" }}>{o.msg}</span>
+    <>
+      {hardOverrides.length > 0 && (
+        <div style={{ background: "#1e0a10", border: "1px solid #ff225535", borderRadius: 7, padding: "12px 16px", marginBottom: 10 }}>
+          <div style={{ fontSize: 10, color: "#ff2255", fontWeight: 700, letterSpacing: 1.5, marginBottom: 8, textTransform: "uppercase", fontFamily: "'JetBrains Mono', monospace" }}>
+            ⚠ Override Alerts — Sizing Adjusted
+          </div>
+          {hardOverrides.map((o, i) => (
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 4, padding: "5px 0", borderTop: i > 0 ? "1px solid #f0d8e0" : "none" }}>
+              <span style={{ fontSize: 13, color: "#ff7040", fontFamily: "'JetBrains Mono', monospace" }}>{o.label}</span>
+              <span style={{ fontSize: 12, color: "#a03020", fontFamily: "'Inter', system-ui, sans-serif" }}>{o.msg}</span>
+            </div>
+          ))}
         </div>
-      ))}
-    </div>
+      )}
+      {warnings.length > 0 && (
+        <div style={{ background: "#1a1400", border: "1px solid #f0c02035", borderRadius: 7, padding: "12px 16px", marginBottom: 10 }}>
+          <div style={{ fontSize: 10, color: "#f0c020", fontWeight: 700, letterSpacing: 1.5, marginBottom: 8, textTransform: "uppercase", fontFamily: "'JetBrains Mono', monospace" }}>
+            ⚡ Warnings — No Override Applied
+          </div>
+          {warnings.map((o, i) => (
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 4, padding: "5px 0", borderTop: i > 0 ? "1px solid #2a2450" : "none" }}>
+              <span style={{ fontSize: 13, color: "#f0c020", fontFamily: "'JetBrains Mono', monospace" }}>{o.label}</span>
+              <span style={{ fontSize: 12, color: "#a09020", fontFamily: "'Inter', system-ui, sans-serif" }}>{o.msg}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
   );
 }
 
 // ─── JSON REPAIR ─────────────────────────────────────────────────────────────
 function repairJson(str) {
-  // Remove trailing commas before } or ]
+  // 1. Remove any text before the first { or after the last }
+  const f = str.indexOf("{"), l = str.lastIndexOf("}");
+  if (f !== -1 && l !== -1) str = str.slice(f, l + 1);
+
+  // 2. Fix unescaped newlines inside strings
+  str = str.replace(/(?<=:\s*"[^"]*)\n(?=[^"]*")/g, " ");
+
+  // 3. Remove trailing commas before } or ]
   str = str.replace(/,(\s*[}\]])/g, "$1");
-  // Close any unclosed braces/brackets (handles truncated output)
+
+  // 4. Close any unclosed braces/brackets (handles truncated output)
   const stack = [];
   for (const ch of str) {
     if (ch === "{") stack.push("}");
@@ -822,9 +924,18 @@ export default function Dashboard() {
   const [lastFetched, setLastFetched] = useState(null);
   const [history, setHistory]         = useState([]);
   const [overrides, setOverrides]     = useState([]);
+  const [liveIds, setLiveIds]         = useState(new Set());
+  const [storageAvailable, setStorageAvailable] = useState(true);
+  const scanLockRef = useRef(false);
 
-  // Load scan history from localStorage on mount
+  // Load scan history from localStorage on mount + check availability
   useEffect(() => {
+    try {
+      localStorage.setItem("__test__", "1");
+      localStorage.removeItem("__test__");
+    } catch {
+      setStorageAvailable(false);
+    }
     try {
       const saved = JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]");
       if (Array.isArray(saved)) setHistory(saved);
@@ -857,6 +968,8 @@ export default function Dashboard() {
   }, [history, weightedSignalKey]);
 
   const fetchData = useCallback(async () => {
+    if (scanLockRef.current) return;
+    scanLockRef.current = true;
     setLoading(true);
     setError(null);
     setOverrides([]);
@@ -871,13 +984,18 @@ export default function Dashboard() {
       } catch {} // non-fatal
 
       // ── Step 2: build prompt with live values injected ───────────────────
+      const fetchedLiveIds = new Set();
       const allInds = CATEGORIES.flatMap((c) =>
         c.indicators.map((i) => {
           const live = fmtLive(i.id, livePrices[i.id]);
-          if (live) return `- ${i.id}: ${i.name} → LIVE VALUE: ${live} [use this exact value, do not search]`;
+          if (live) {
+            fetchedLiveIds.add(i.id);
+            return `- ${i.id}: ${i.name} → LIVE VALUE: ${live} [use this exact value, do not search]`;
+          }
           return `- ${i.id}: ${i.name} → estimate: "${i.query}"`;
         })
       );
+      setLiveIds(fetchedLiveIds);
       const prompt = API_PROMPT + allInds.join("\n");
 
       // ── Step 3: LLM scoring ───────────────────────────────────────────────
@@ -921,8 +1039,10 @@ export default function Dashboard() {
         return updated;
       });
 
-      // ── Step 5: hard override check ───────────────────────────────────────
-      setOverrides(getOverrides(livePrices));
+      // ── Step 5: hard override check (live prices preferred, LLM fallback) ─
+      const liveOverrides = getOverrides(livePrices, parsed.dimensions);
+      const indicatorOverrides = getIndicatorOverrides(parsed.indicators);
+      setOverrides(liveOverrides.length > 0 ? liveOverrides : indicatorOverrides);
       setData(parsed);
       setLastFetched(new Date());
     } catch (err) {
@@ -930,6 +1050,7 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
       setProgress("");
+      setTimeout(() => { scanLockRef.current = false; }, 2000);
     }
   }, []);
 
@@ -980,7 +1101,7 @@ export default function Dashboard() {
 
         {/* Scan History — persists from localStorage between sessions */}
         {history.length > 0 && (
-          <ScanHistoryBar history={history} onClear={() => { localStorage.removeItem(HISTORY_KEY); setHistory([]); }} />
+          <ScanHistoryBar history={history} storageAvailable={storageAvailable} onClear={() => { localStorage.removeItem(HISTORY_KEY); setHistory([]); }} />
         )}
 
         {/* Scan Button */}
@@ -1020,7 +1141,7 @@ export default function Dashboard() {
             <LiqBox text={data.liquidity_narrative} />
             <KeyDates dates={data.key_dates} />
             {CATEGORIES.map((c) => (
-              <Section key={c.id} category={c} indicators={data.indicators} />
+              <Section key={c.id} category={c} indicators={data.indicators} liveIds={liveIds} />
             ))}
             <RulesRef />
             <div style={{ textAlign: "center", padding: "14px 0 8px", fontSize: 10, color: "#7068a8", letterSpacing: 1.5, fontFamily: "'JetBrains Mono', monospace" }}>
