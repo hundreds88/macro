@@ -187,7 +187,13 @@ THE 6 DIMENSIONS (each scored -1, 0, or +1):
 3. GROWTH: Economic momentum. PMI>53+ISM New Orders>53+jobs strong=+1, Mixed=0, ISM New Orders<48+PMI contracting+rising unemployment=-1. NOTE: ISM New Orders leads PMI by 1-2 months — weight it heavily.
 4. LIQUIDITY: Net liquidity conditions. Global M2 expanding+Fed BS growing+RRP draining=+1, Mixed=0, Global M2 contracting+QT active+TGA building=-1. NOTE: Global M2 (US+EU+China+Japan) leads risk assets by 12-16 weeks — weight it heavily.
 5. DOLLAR: DXY direction. Weakening=+1 (bullish risk assets), Stable=0, Strengthening=-1
-6. SENTIMENT: Risk appetite. VIX<15+HY spreads tightening+ETF inflows=+1, Mixed=0, VIX>25+HY spreads widening+outflows=-1. NOTE: HY spread DIRECTION (widening vs tightening) matters more than absolute level.
+6. SENTIMENT: Risk appetite. VIX<15+HY spreads tightening+ETF inflows=+1, VIX 15-25=0 (NEUTRAL — even with some widening), VIX>25+HY spreads widening+outflows=-1. CRITICAL: VIX between 15 and 25 scores 0, NOT -1 — a score of -1 requires VIX>25. NOTE: HY spread DIRECTION (widening vs tightening) matters more than absolute level.
+
+COMPOSITE SCORING (CRITICAL): Do NOT use a simple sum for the composite field.
+The composite is a weighted score computed as:
+  round((monetary×2.0 + inflation×1.5 + growth×1.5 + liquidity×1.0 + sentiment×0.75 + dollar×0.5) / 7.25 × 6)
+Example: MON=-1, SEN=-1, all others=0 → round((-2.75/7.25)×6) = round(-2.28) = -2
+Your composite field MUST equal this formula. Your composite_narrative MUST reference this weighted score, not a raw sum.
 
 CRYPTO SENTIMENT OVERLAY (scored -2 to +2):
 MVRV context: <1=historically undervalued, 1-2=fair value, 2-3=elevated, >3.5=overheated.
@@ -196,7 +202,7 @@ MVRV context: <1=historically undervalued, 1-2=fair value, 2-3=elevated, >3.5=ov
 Return ONLY valid JSON (no markdown, no backticks):
 - dimensions: {monetary,inflation,growth,liquidity,dollar,sentiment} each {score:-1|0|1, rationale:string}
 - crypto_sentiment: {score:-2..+2, rationale:string}
-- composite: integer (-6 to +6)
+- composite: integer (-6 to +6) — must equal round((monetary×2.0+inflation×1.5+growth×1.5+liquidity×1.0+sentiment×0.75+dollar×0.5)/7.25×6), NOT a raw sum
 - indicators: object keyed by indicator_id (use exact IDs from list below), each {value:string, trend:string, signal:strong_bull|bull|neutral|bear|strong_bear, note:string}
 - regime: {monetary,fiscal,inflation,growth,liquidity,sentiment} each {state:string, signal:bull|bear|neutral, detail:string}
 - liquidity_narrative: string (1-2 sentences)
@@ -1052,6 +1058,7 @@ export default function Dashboard() {
 
       // ── Step 4: save to localStorage history ─────────────────────────────
       const wc = computeWeightedComposite(parsed.dimensions);
+      if (wc != null) parsed.composite = wc; // Authoritative weighted value overrides LLM raw sum
       setHistory(prev => {
         const entry = {
           ts:       Date.now(),
