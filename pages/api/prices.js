@@ -165,6 +165,26 @@ export default async function handler(req, res) {
         };
       }
     }),
+
+    // FRED — Fed Balance Sheet total assets (WALCL, weekly, billions)
+    fetchFRED("WALCL")
+      .then(d => { if (d) out.fed_bs = d; })
+      .catch(() => {}),
+
+    // FRED — Overnight Reverse Repurchase Agreements (RRPONTSYD, daily, billions)
+    fetchFRED("RRPONTSYD")
+      .then(d => { if (d) out.rrp = d; })
+      .catch(() => {}),
+
+    // FRED — Treasury General Account (WTREGEN, weekly, billions)
+    fetchFRED("WTREGEN")
+      .then(d => { if (d) out.tga = d; })
+      .catch(() => {}),
+
+    // FRED — US M2 Money Supply (M2SL, monthly, billions)
+    fetchFRED("M2SL")
+      .then(d => { if (d) out.us_m2 = d; })
+      .catch(() => {}),
   ]);
 
   // 10-minute cache hint for Vercel edge

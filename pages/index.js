@@ -730,6 +730,34 @@ function RulesRef() {
   );
 }
 
+// ─── FORMAT LIVE DATA FOR LLM INJECTION ──────────────────────────────────────
+// Converts the /api/prices response into human-readable strings passed as
+// the liveData block prepended to the LLM prompt in /api/scan.
+function formatLiveData(live) {
+  if (!live) return {};
+  const fmt = {};
+  if (live.spx?.price)          fmt.spx          = `$${live.spx.price.toLocaleString("en-US", { maximumFractionDigits: 0 })} (${((live.spx.price - live.spx.prev) / live.spx.prev * 100 >= 0) ? "+" : ""}${((live.spx.price - live.spx.prev) / live.spx.prev * 100).toFixed(2)}% today)`;
+  if (live.vix?.price)          fmt.vix          = live.vix.price.toFixed(2);
+  if (live.dxy?.price)          fmt.dxy          = live.dxy.price.toFixed(2);
+  if (live.us10y?.price)        fmt.us10y        = `${live.us10y.price.toFixed(2)}%`;
+  if (live.hy_spread?.value)    fmt.hy_spread    = `${live.hy_spread.value.toFixed(2)}% OAS`;
+  if (live.btc?.price)          fmt.btc          = `$${Math.round(live.btc.price).toLocaleString("en-US")} (${(live.btc.change24h ?? 0) >= 0 ? "+" : ""}${(live.btc.change24h ?? 0).toFixed(1)}% 24h)`;
+  if (live.eth?.price)          fmt.eth          = `$${Math.round(live.eth.price).toLocaleString("en-US")} (${(live.eth.change24h ?? 0) >= 0 ? "+" : ""}${(live.eth.change24h ?? 0).toFixed(1)}% 24h)`;
+  if (live.fear_greed?.value)   fmt.fear_greed   = `${live.fear_greed.value} — ${live.fear_greed.label}`;
+  if (live.fed_bs?.value)       fmt.fed_bs       = `$${(live.fed_bs.value / 1000).toFixed(2)}T`;
+  if (live.rrp?.value)          fmt.rrp          = `$${live.rrp.value.toFixed(0)}B`;
+  if (live.tga?.value)          fmt.tga          = `$${live.tga.value.toFixed(0)}B`;
+  if (live.us_m2?.value)        fmt.us_m2        = `$${(live.us_m2.value / 1000).toFixed(1)}T`;
+  if (live.ffr?.value)          fmt.ffr          = `${live.ffr.value.toFixed(2)}%`;
+  if (live.core_pce?.value)     fmt.core_pce     = `${live.core_pce.value.toFixed(2)}% YoY`;
+  if (live.core_pce_mom?.value) fmt.core_pce_mom = `${live.core_pce_mom.value.toFixed(2)}% MoM`;
+  if (live.unemployment?.value) fmt.unemployment = `${live.unemployment.value.toFixed(1)}%`;
+  if (live.real_yield?.value)   fmt.real_yield   = `${live.real_yield.value.toFixed(2)}%`;
+  if (live.breakeven5?.price)   fmt.breakeven5   = `${live.breakeven5.price.toFixed(2)}%`;
+  if (live.yield_curve?.spread != null) fmt.yield_curve = `${live.yield_curve.spread >= 0 ? "+" : ""}${live.yield_curve.spread.toFixed(2)}% (2Y ${live.yield_curve.y2?.toFixed(2)}%, 10Y ${live.yield_curve.y10?.toFixed(2)}%)`;
+  return fmt;
+}
+
 // ─── LIVE PRICE FORMATTER ────────────────────────────────────────────────────
 function fmtLive(id, d) {
   if (!d) return null;
@@ -747,6 +775,10 @@ function fmtLive(id, d) {
   if (id === "unemployment")    return `${d.value.toFixed(1)}%`;
   if (id === "core_pce")        return `${d.value.toFixed(2)}% YoY`;
   if (id === "core_pce_mom")    return `${d.value.toFixed(2)}% MoM`;
+  if (id === "fed_bs")          return `$${(d.value / 1000).toFixed(2)}T`;
+  if (id === "rrp")             return `$${d.value.toFixed(0)}B`;
+  if (id === "tga")             return `$${d.value.toFixed(0)}B`;
+  if (id === "us_m2")           return `$${(d.value / 1000).toFixed(1)}T`;
   if (id === "yield_curve") {
     const sign   = d.spread >= 0 ? "+" : "";
     const status = d.spread < 0 ? "inverted" : "normal";
@@ -996,6 +1028,7 @@ export default function Dashboard() {
         })
       );
       setLiveIds(fetchedLiveIds);
+      const liveLines = formatLiveData(livePrices);
       const prompt = API_PROMPT + allInds.join("\n");
 
       // ── Step 3: LLM scoring ───────────────────────────────────────────────
@@ -1003,7 +1036,7 @@ export default function Dashboard() {
       const res = await fetch("/api/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, system: API_SYSTEM }),
+        body: JSON.stringify({ prompt, system: API_SYSTEM, liveData: liveLines }),
       });
       if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
       setProgress("Finalizing signals…");
